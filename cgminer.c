@@ -266,9 +266,11 @@ char *opt_bitmain_options;
 static char *opt_set_bitmain_fan;
 char *opt_bitmain_freq;
 // Ignored
+#ifdef USE_ANT_S2
 static bool opt_bitmain_nobeeper;
 static bool opt_bitmain_notempoverctrl;
 static bool opt_bitmain_homemode;
+#endif
 #endif
 #ifdef USE_ANT_S2
 #ifndef USE_ANT_S3
