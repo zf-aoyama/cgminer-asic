@@ -77,10 +77,6 @@ char *opt_bitmain_voltage = BITMAIN_VOLTAGE_DEF;
 
 
 bool opt_bitmain_hwerror = false;
-#ifdef USE_ANT_S2
-bool opt_bitmain_checkall = false;
-bool opt_bitmain_checkn2diff = false;
-#endif
 bool opt_bitmain_beeper = false;
 bool opt_bitmain_tempoverctrl = false;
 bool opt_bitmain_homemode = false;
