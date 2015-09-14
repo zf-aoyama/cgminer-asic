@@ -59,13 +59,31 @@ static void ants2_detect(__maybe_unused bool hotplug)
 
 #define BITMAIN_CALC_DIFF1	1
 
+char *opt_bitmain_options;
+char *opt_set_bitmain_fan;
+char *opt_bitmain_freq;
+// Ignored
+bool opt_bitmain_nobeeper;
+bool opt_bitmain_notempoverctrl;
+
+#ifdef USE_ANT_S2
+bool opt_bitmain_checkall = false;
+bool opt_bitmain_checkn2diff = false;
+#ifndef USE_ANT_S3
+char *opt_bitmain_dev;
+#endif
+char *opt_bitmain_voltage = BITMAIN_VOLTAGE_DEF;
+#endif
+
+
 bool opt_bitmain_hwerror = false;
 #ifdef USE_ANT_S2
 bool opt_bitmain_checkall = false;
 bool opt_bitmain_checkn2diff = false;
+#endif
 bool opt_bitmain_beeper = false;
 bool opt_bitmain_tempoverctrl = false;
-#endif
+bool opt_bitmain_homemode = false;
 int opt_bitmain_temp = BITMAIN_TEMP_TARGET;
 int opt_bitmain_workdelay = BITMAIN_WORK_DELAY;
 int opt_bitmain_overheat = BITMAIN_TEMP_OVERHEAT;
@@ -408,24 +426,14 @@ static bool get_options(__maybe_unused int this_option_offset, int *baud,
 }
 #endif
 
-#ifdef USE_ANT_S1
-static int bitmain_set_txconfig(struct bitmain_txconfig_token *bm,
-				uint8_t reset, uint8_t fan_eft, uint8_t timeout_eft, uint8_t frequency_eft,
-				uint8_t voltage_eft, uint8_t chain_check_time_eft, uint8_t chip_config_eft,
-				uint8_t hw_error_eft, uint8_t chain_num, uint8_t asic_num,
-				uint8_t fan_pwm_data, uint8_t timeout_data,
-				uint16_t frequency, uint8_t voltage, uint8_t chain_check_time,
-				uint8_t chip_address, uint8_t reg_address, uint8_t * reg_data)
-#else
 static int bitmain_set_txconfig(struct bitmain_txconfig_token *bm,
 				uint8_t reset, uint8_t fan_eft, uint8_t timeout_eft, uint8_t frequency_eft,
 				uint8_t voltage_eft, uint8_t chain_check_time_eft, uint8_t chip_config_eft,
 				uint8_t hw_error_eft, uint8_t beeper_ctrl, uint8_t temp_over_ctrl,
-				uint8_t chain_num, uint8_t asic_num,
+				uint8_t home_mode, uint8_t chain_num, uint8_t asic_num,
 				uint8_t fan_pwm_data, uint8_t timeout_data,
 				uint16_t frequency, uint8_t *voltage, uint8_t chain_check_time,
 				uint8_t chip_address, uint8_t reg_address, uint8_t * reg_data)
-#endif
 {
 	uint16_t crc = 0;
 	int datalen = 0;
@@ -466,12 +474,14 @@ static int bitmain_set_txconfig(struct bitmain_txconfig_token *bm,
 	bm->chip_config_eft = chip_config_eft;
 	bm->hw_error_eft = hw_error_eft;
 
+	// S1 doesn't use them, but avoid gcc warnings
+	bm->beeper_ctrl = beeper_ctrl;
+	bm->temp_over_ctrl = temp_over_ctrl;
+	bm->fan_home_mode = home_mode;
+
 #ifdef USE_ANT_S1
 	sendbuf[2] = bitswap(sendbuf[2]);
 #else
-	bm->beeper_ctrl = beeper_ctrl;
-	bm->temp_over_ctrl = temp_over_ctrl;
-
 	sendbuf[4] = bitswap(sendbuf[4]);
 	sendbuf[5] = bitswap(sendbuf[5]);
 #endif
@@ -483,7 +493,7 @@ static int bitmain_set_txconfig(struct bitmain_txconfig_token *bm,
 
 	bm->frequency = htole16(frequency);
 #ifdef USE_ANT_S1
-	bm->voltage = voltage;
+	bm->voltage = voltage[0];
 #else
 	bm->voltage[0] = voltage[0];
 	bm->voltage[1] = voltage[1];
@@ -507,13 +517,13 @@ static int bitmain_set_txconfig(struct bitmain_txconfig_token *bm,
 			(int)reset, (int)fan_eft, (int)timeout_eft, (int)frequency_eft,
 			(int)voltage_eft, (int)chain_check_time_eft, (int)chip_config_eft,
 			(int)hw_error_eft, (int)chain_num, (int)asic_num, (int)fan_pwm_data,
-			(int)timeout_data, (int)frequency, (int)voltage, (int)chain_check_time,
+			(int)timeout_data, (int)frequency, (int)voltage[0], (int)chain_check_time,
 			(int)reg_data[0], (int)reg_data[1], (int)reg_data[2], (int)reg_data[3],
 			(int)chip_address, (int)reg_address, (int)crc);
 #else
 	applogsiz(LOG_DEBUG, 512, "%s: %s() v(%d) reset(%d) faneft(%d) touteft(%d) freqeft(%d)"
 			" volteft(%d) chainceft(%d) chipceft(%d) hweft(%d)"
-			" beepctrl(%d) toverctl(%d) mnum(%d)"
+			" beepctrl(%d) toverctl(%d) home(%d) mnum(%d)"
 			" anum(%d) fanpwmdata(%d) toutdata(%d) freq(%d) volt(%02x%02x)"
 			" chainctime(%d) regdata(%02x%02x%02x%02x) chipaddr(%02x)"
 			" regaddr(%02x) crc(%04x)",
@@ -521,8 +531,9 @@ static int bitmain_set_txconfig(struct bitmain_txconfig_token *bm,
 			(int)version, (int)reset, (int)fan_eft, (int)timeout_eft,
 			(int)frequency_eft, (int)voltage_eft, (int)chain_check_time_eft,
 			(int)chip_config_eft, (int)hw_error_eft, (int)beeper_ctrl,
-			(int)temp_over_ctrl, (int)chain_num, (int)asic_num, (int)fan_pwm_data,
-			(int)timeout_data, (int)frequency, (int)voltage[0], (int)voltage[1],
+			(int)temp_over_ctrl, (int)home_mode, (int)chain_num, (int)asic_num,
+			(int)fan_pwm_data, (int)timeout_data, (int)frequency,
+			(int)voltage[0], (int)voltage[1],
 			(int)chain_check_time, (int)reg_data[0], (int)reg_data[1],
 			(int)reg_data[2], (int)reg_data[3], (int)chip_address,
 			(int)reg_address, (int)crc);
@@ -1908,13 +1919,12 @@ static int bitmain_initialize(struct cgpu_info *bitmain)
 	struct bitmain_rxstatus_data rxstatusdata;
 	int i = 0, j = 0, m = 0, statusok = 0;
 	uint32_t checkbit = 0x00000000;
-#ifdef USE_ANT_S1
-	int eft = 0;
-#else
-	int r = 0;
 	int hwerror_eft = 0;
 	int beeper_ctrl = 1;
 	int tempover_ctrl = 1;
+	int home_mode = 0;
+#ifndef USE_ANT_S1
+	int r = 0;
 	struct bitmain_packet_head packethead;
 	int asicnum = 0;
 
@@ -2163,19 +2173,7 @@ static int bitmain_initialize(struct cgpu_info *bitmain)
 	if (statusok) {
 		applog(LOG_ERR, "%s%d: %s() set_txconfig",
 				bitmain->drv->name, bitmain->device_id, __func__);
-#ifdef USE_ANT_S1
-		if (opt_bitmain_hwerror)
-			eft = 1;
-		else
-			eft = 0;
 
-		sendlen = bitmain_set_txconfig((struct bitmain_txconfig_token *)sendbuf,
-						1, 1, 1, 1, 1, 0, 1, eft,
-						info->chain_num, info->asic_num,
-						BITMAIN_DEFAULT_FAN_MAX_PWM, info->timeout,
-						info->frequency, BITMAIN_DEFAULT_VOLTAGE,
-						0, 0, 0x04, info->reg_data);
-#else // S2
 		if (opt_bitmain_hwerror)
 			hwerror_eft = 1;
 		else
@@ -2188,15 +2186,24 @@ static int bitmain_initialize(struct cgpu_info *bitmain)
 			tempover_ctrl = 1;
 		else
 			tempover_ctrl = 0;
+		if (opt_bitmain_homemode)
+			home_mode = 1;
+		else
+			home_mode = 0;
 
+#ifdef USE_ANT_S1
+		uint8_t _voltage[2] = { BITMAIN_DEFAULT_VOLTAGE, 0 };
+#else
+		uint8_t _voltage[2] = { info->voltage[0], info->voltage[1] };
+#endif
 		sendlen = bitmain_set_txconfig((struct bitmain_txconfig_token *)sendbuf,
 						1, 1, 1, 1, 1, 0, 1, hwerror_eft,
-						beeper_ctrl, tempover_ctrl,
+						beeper_ctrl, tempover_ctrl, home_mode,
 						info->chain_num, info->asic_num,
 						BITMAIN_DEFAULT_FAN_MAX_PWM, info->timeout,
-						info->frequency, info->voltage,
+						info->frequency, _voltage,
 						0, 0, 0x04, info->reg_data);
-#endif
+
 		if (sendlen <= 0) {
 			applog(LOG_ERR, "%s%d: %s() set_txconfig error(%d)",
 					bitmain->drv->name, bitmain->device_id, __func__, sendlen);
@@ -3314,6 +3321,7 @@ static struct api_data *bitmain_api_stats(struct cgpu_info *cgpu)
 	root = api_add_int(root, "opt_bitmain_fan_min", &opt_bitmain_fan_min, false);
 	root = api_add_int(root, "opt_bitmain_fan_max", &opt_bitmain_fan_max, false);
 	root = api_add_bool(root, "opt_bitmain_auto", &opt_bitmain_auto, false);
+	root = api_add_bool(root, "opt_bitmain_homemode", &opt_bitmain_homemode, false);
 
 	return root;
 }

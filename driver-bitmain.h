@@ -152,12 +152,11 @@ struct bitmain_txconfig_token {
 	uint8_t chain_check_time_eft :1;
 	uint8_t chip_config_eft      :1;
 	uint8_t hw_error_eft         :1;
-#ifdef USE_ANT_S1
-	uint8_t reserved1;
-#else // S2
 	uint8_t beeper_ctrl          :1;
 	uint8_t temp_over_ctrl       :1;
-	uint8_t reserved1            :6;
+	uint8_t fan_home_mode        :1;
+	uint8_t reserved1            :5;
+#ifndef USE_ANT_S1
 	uint8_t chain_check_time;
 	uint8_t reserved2;
 #endif
@@ -560,14 +559,38 @@ typedef struct witem {
 #define ASSERT1(condition) __maybe_unused static char sizeof_uint32_t_must_be_4[(condition)?1:-1]
 ASSERT1(sizeof(uint32_t) == 4);
 
+// All command options
+
+extern char *opt_bitmain_options;
+extern char *opt_set_bitmain_fan;
+extern char *opt_bitmain_freq;
+// Ignored
+extern bool opt_bitmain_nobeeper;
+extern bool opt_bitmain_notempoverctrl;
+
+#ifdef USE_ANT_S2
+extern bool opt_bitmain_checkall;
+extern bool opt_bitmain_checkn2diff;
+#ifndef USE_ANT_S3
+extern char *opt_bitmain_dev;
+#endif
+extern char *opt_bitmain_voltage;
+#endif
+
 extern struct bitmain_info **bitmain_info;
+extern bool opt_bitmain_hwerror;
+#ifdef USE_ANT_S2
+extern bool opt_bitmain_checkall;
+extern bool opt_bitmain_checkn2diff;
+#endif
+extern bool opt_bitmain_beeper;
+extern bool opt_bitmain_tempoverctrl;
+extern bool opt_bitmain_homemode;
 extern int opt_bitmain_temp;
 extern int opt_bitmain_workdelay;
 extern int opt_bitmain_overheat;
 extern int opt_bitmain_fan_min;
 extern int opt_bitmain_fan_max;
-extern int opt_bitmain_freq_min;
-extern int opt_bitmain_freq_max;
 extern bool opt_bitmain_auto;
 extern char *set_bitmain_fan(char *arg);
 
