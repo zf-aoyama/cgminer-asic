@@ -3270,7 +3270,7 @@ static struct api_data *bitmain_api_stats(struct cgpu_info *cgpu)
 	root = api_add_string(root, "read_size", fillbuf, true);
 	root = api_add_uint64(root, "read_0s", &(info->read_0s), true);
 	root = api_add_uint64(root, "read_18s", &(info->read_18s), true);
-	root = api_add_uint64(root, "read_bad", &(info->readbuf_over), true);
+	root = api_add_uint64(root, "read_bad", &(info->read_bad), true);
 	root = api_add_uint64(root, "readbuf_over", &(info->readbuf_over), true);
 	root = api_add_uint64(root, "get_results", &(info->get_results), true);
 	root = api_add_uint64(root, "get_sleepsa", &(info->get_sleepsa), true);
