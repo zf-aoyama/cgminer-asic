@@ -1614,10 +1614,10 @@ static struct opt_table opt_config_table[] = {
 #endif
 #ifdef USE_GEKKO
 	OPT_WITH_ARG("--gekko-2pac-freq",
-		     set_float_100_to_500, opt_show_intval, &opt_gekko_gsd_freq,
+		     set_float_100_to_500, opt_show_floatval, &opt_gekko_gsd_freq,
 		     "Set GekkoScience 2Pac frequency in MHz, range 100-500"),
 	OPT_WITH_ARG("--gekko-compac-freq",
-		     set_float_100_to_500, opt_show_intval, &opt_gekko_gsc_freq,
+		     set_float_100_to_500, opt_show_floatval, &opt_gekko_gsc_freq,
 		     "Set GekkoScience Compac frequency in MHz, range 100-500"),
 #endif
 #ifdef HAVE_LIBCURL
