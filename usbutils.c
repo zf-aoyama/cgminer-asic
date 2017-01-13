@@ -77,6 +77,7 @@ static cgtimer_t usb11_cgt;
 #define HASHFAST_TIMEOUT_MS 999
 #define HASHRATIO_TIMEOUT_MS 999
 #define BLOCKERUPTER_TIMEOUT_MS 999
+#define COMPAC_TIMEOUT_MS 999
 
 /* The safety timeout we use, cancelling async transfers on windows that fail
  * to timeout on their own. */
@@ -95,6 +96,7 @@ static cgtimer_t usb11_cgt;
 #define HASHFAST_TIMEOUT_MS 500
 #define HASHRATIO_TIMEOUT_MS 200
 #define BLOCKERUPTER_TIMEOUT_MS 300
+#define COMPAC_TIMEOUT_MS 300
 #endif
 
 #define USB_EPS(_intx, _epinfosx) { \
@@ -197,6 +199,18 @@ static struct usb_epinfo bet_epinfos[] = {
 
 static struct usb_intinfo bet_ints[] = {
 	USB_EPS(0, bet_epinfos)
+};
+#endif
+
+#ifdef USE_GEKKO
+// Compac Device
+static struct usb_epinfo gek_epinfos[] = {
+	{ LIBUSB_TRANSFER_TYPE_BULK,	64,	EPI(1), 0, 0 },
+	{ LIBUSB_TRANSFER_TYPE_BULK,	64,	EPO(1), 0, 0 }
+};
+
+static struct usb_intinfo gek_ints[] = {
+	USB_EPS(0, gek_epinfos)
 };
 #endif
 
@@ -805,30 +819,6 @@ static struct usb_find_devices find_dev[] = {
  		INTINFO(ica1_ints) },
 	{
 		.drv = DRIVER_icarus,
-		.name = "BSC",
-		.ident = IDENT_BSC,
-		.idVendor = 0x10c4,
-		.idProduct = 0xea60,
-		.iManufacturer = "bitshopperde",
-		.iProduct = "Compac BM1384 Bitcoin Miner",
-		.config = 1,
-		.timeout = ICARUS_TIMEOUT_MS,
-		.latency = LATENCY_UNUSED,
-		INTINFO(amu_ints) },
-	{
-		.drv = DRIVER_icarus,
-		.name = "GSC",
-		.ident = IDENT_GSC,
-		.idVendor = 0x10c4,
-		.idProduct = 0xea60,
-		.iManufacturer = "GekkoScience",
-		.iProduct = "Compac BM1384 Bitcoin Miner",
-		.config = 1,
-		.timeout = ICARUS_TIMEOUT_MS,
-		.latency = LATENCY_UNUSED,
-		INTINFO(amu_ints) },
-	{
-		.drv = DRIVER_icarus,
 		.name = "AMU",
 		.ident = IDENT_AMU,
 		.idVendor = 0x10c4,
@@ -950,6 +940,44 @@ static struct usb_find_devices find_dev[] = {
 		.latency = LATENCY_UNUSED,
 		INTINFO(bet_ints) },
 
+#endif
+#ifdef USE_GEKKO
+	{
+		.drv = DRIVER_icarus,
+		.name = "BSC",
+		.ident = IDENT_BSC,
+		.idVendor = 0x10c4,
+		.idProduct = 0xea60,
+		.iManufacturer = "bitshopperde",
+		.iProduct = "Compac BM1384 Bitcoin Miner",
+		.config = 1,
+		.timeout = COMPAC_TIMEOUT_MS,
+		.latency = LATENCY_UNUSED,
+		INTINFO(gek_ints) },
+	{
+		.drv = DRIVER_gekko,
+		.name = "GSC",
+		.ident = IDENT_GSC,
+		.idVendor = 0x10c4,
+		.idProduct = 0xea60,
+		.iManufacturer = "GekkoScience",
+		.iProduct = "Compac BM1384 Bitcoin Miner",
+		.config = 1,
+		.timeout = COMPAC_TIMEOUT_MS,
+		.latency = LATENCY_UNUSED,
+		INTINFO(gek_ints) },
+	{
+		.drv = DRIVER_gekko,
+		.name = "GSD",
+		.ident = IDENT_GSD,
+		.idVendor = 0x10c4,
+		.idProduct = 0xea60,
+		.iManufacturer = "GekkoScience",
+		.iProduct = "2Pac BM1384 Bitcoin Miner",
+		.config = 1,
+		.timeout = COMPAC_TIMEOUT_MS,
+		.latency = LATENCY_UNUSED,
+		INTINFO(gek_ints) },
 #endif
 	{ DRIVER_MAX, NULL, 0, 0, 0, NULL, NULL, 0, 0, 0, 0, NULL }
 };

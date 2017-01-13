@@ -246,6 +246,7 @@ static inline int fsync (int fd)
 	DRIVER_ADD_COMMAND(bitfury) \
 	DRIVER_ADD_COMMAND(blockerupter) \
 	DRIVER_ADD_COMMAND(cointerra) \
+	DRIVER_ADD_COMMAND(gekko) \
 	DRIVER_ADD_COMMAND(hashfast) \
 	DRIVER_ADD_COMMAND(hashratio) \
 	DRIVER_ADD_COMMAND(icarus) \
@@ -1009,7 +1010,6 @@ extern char *opt_icarus_options;
 extern char *opt_icarus_timing;
 extern float opt_anu_freq;
 extern float opt_au3_freq;
-extern float opt_compac_freq;
 extern int opt_au3_volt;
 extern float opt_rock_freq;
 #endif
@@ -1017,6 +1017,10 @@ extern bool opt_worktime;
 #ifdef USE_AVALON
 extern char *opt_avalon_options;
 extern char *opt_bitburner_fury_options;
+#endif
+#ifdef USE_GEKKO
+extern float opt_gekko_gsc_freq;
+extern float opt_gekko_gsd_freq;
 #endif
 #ifdef USE_KLONDIKE
 extern char *opt_klondike_options;

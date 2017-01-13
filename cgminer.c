@@ -232,7 +232,6 @@ char *opt_icarus_options = NULL;
 char *opt_icarus_timing = NULL;
 float opt_anu_freq = 250;
 float opt_au3_freq = 225;
-float opt_compac_freq = 150;
 int opt_au3_volt = 775;
 float opt_rock_freq = 270;
 #endif
@@ -264,6 +263,10 @@ static char *opt_set_avalonm_freq;
 #endif
 #ifdef USE_BLOCKERUPTER
 int opt_bet_clk = 0;
+#endif
+#ifdef USE_GEKKO
+float opt_gekko_gsc_freq = 150;
+float opt_gekko_gsd_freq = 100;
 #endif
 #ifdef USE_HASHRATIO
 #include "driver-hashratio.h"
@@ -1185,6 +1188,7 @@ static void load_temp_cutoffs()
 	}
 }
 
+#ifdef USE_GEKKO
 static char *set_float_100_to_500(const char *arg, float *i)
 {
 	char *err = opt_set_floatval(arg, i);
@@ -1197,6 +1201,7 @@ static char *set_float_100_to_500(const char *arg, float *i)
 
 	return NULL;
 }
+#endif
 
 static char *set_float_125_to_500(const char *arg, float *i)
 {
@@ -1279,9 +1284,6 @@ static struct opt_table opt_config_table[] = {
 	OPT_WITH_ARG("--au3-volt",
 		     set_int_0_to_9999, &opt_show_intval, &opt_au3_volt,
 		     "Set AntminerU3 voltage in mv, range 725-850, 0 to not set"),
-	OPT_WITH_ARG("--compac-freq",
-		     set_float_100_to_500, &opt_show_floatval, &opt_compac_freq,
-		     "Set GekkoScience Compac frequency in MHz, range 100-500"),
 #endif
 #ifdef USE_AVALON
 	OPT_WITHOUT_ARG("--avalon-auto",
@@ -1609,6 +1611,14 @@ static struct opt_table opt_config_table[] = {
         OPT_WITH_ARG("--bet-clk",
                      opt_set_intval, opt_show_intval, &opt_bet_clk,
                      "Set Block Erupter clock"),
+#endif
+#ifdef USE_GEKKO
+	OPT_WITH_ARG("--gekko-2pac-freq",
+		     set_float_100_to_500, opt_show_intval, &opt_gekko_gsd_freq,
+		     "Set GekkoScience 2Pac frequency in MHz, range 100-500"),
+	OPT_WITH_ARG("--gekko-compac-freq",
+		     set_float_100_to_500, opt_show_intval, &opt_gekko_gsc_freq,
+		     "Set GekkoScience Compac frequency in MHz, range 100-500"),
 #endif
 #ifdef HAVE_LIBCURL
 	OPT_WITH_ARG("--btc-address",

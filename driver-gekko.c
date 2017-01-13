@@ -1,51 +1,5 @@
 #include "driver-gekko.h"
 
-static void compac_set_frequency(struct cgpu_info *compac, uint32_t frequency);
-
-uint32_t crc5(char *ptr, uint32_t len) 
-{
-	unsigned char c[5] = {1, 1, 1, 1, 1};
-	uint32_t i, c1, ptr_idx = 0;
-	
-	for (i = 0; i < len; i++) {
-		c1 = c[1];
-		c[1] = c[0];
-		c[0] = c[4] ^ ((ptr[ptr_idx] & (0x80 >> (i % 8))) ? 1 : 0);
-		c[4] = c[3];
-		c[3] = c[2];
-		c[2] = c1 ^ c[0];
-		
-		if (((i + 1) % 8) == 0)
-			ptr_idx++;
-	}
-	return (c[4] * 0x10) | (c[3] * 0x08) | (c[2] * 0x04) | (c[1] * 0x02) | (c[0] * 0x01);
-}
-
-uint64_t bound(uint64_t value, uint64_t lower_bound, uint64_t upper_bound) 
-{
-	if (value < lower_bound)
-		return lower_bound;
-	if (value > upper_bound)
-		return upper_bound;
-	return value;
-}
-
-void stuff_reverse(unsigned char *dst, unsigned char *src, uint32_t len)
-{
-	uint32_t i;
-	for (i = 0; i < len; i++) {
-		dst[i] = src[len - i - 1];
-	}
-}
-
-void stuff_int32(unsigned char *dst, uint32_t x)
-{
-	dst[0] = (x >>  0) & 0xff;
-	dst[1] = (x >>  8) & 0xff;
-	dst[2] = (x >> 16) & 0xff;
-	dst[3] = (x >> 24) & 0xff;
-}
-
 static uint32_t compac_check_nonce(struct cgpu_info *compac)
 {
 	struct COMPAC_INFO *info = compac->device_data;
@@ -58,7 +12,7 @@ static uint32_t compac_check_nonce(struct cgpu_info *compac)
 	uint32_t job_id = info->work_rx[4] ^ 0x80;
 	struct work *work = info->work[job_id];
 
-	if (nonce == 0 || nonce == 0xffffffff || !work || job_id > MAX_CHIPS) {
+	if (nonce == 0 || nonce == 0xffffffff || !work || job_id > MAX_JOBS) {
 		return hashes;
 	}
 	
@@ -80,20 +34,9 @@ static uint32_t compac_check_nonce(struct cgpu_info *compac)
 	
 	if (submit_nonce(info->thr, work, nonce)) {
 		info->accepted++;
-		//if (ms_tdiff(&now, &info->next_freq_tune) > 0) {
-		//	info->frequency += 6.25;
-		//	compac_set_frequency(compac, info->frequency);
-		//	info->next_freq_tune.tv_sec = now.tv_sec + 20;
-		//}
 	} else {
 		if (hwe != compac->hw_errors) {
-			//if (ms_tdiff(&now, &info->last_hwerror) < 60000) {
-			//	applog(LOG_WARNING,"HW errors.  Lowering frequency.");
-			//	info->frequency -= 6.25;		
-			//	compac_set_frequency(compac, info->frequency);
-			//}
 			cgtime(&info->last_hwerror);
-			info->next_freq_tune.tv_sec = now.tv_sec + 120;
 		}
 	}
 
@@ -103,21 +46,18 @@ static uint32_t compac_check_nonce(struct cgpu_info *compac)
 static void compac_update_work(struct cgpu_info *compac)
 {
 	struct COMPAC_INFO *info = compac->device_data;
-	uint32_t i;
-	
 	info->update_work = 1;
 }
 
 static void compac_flush_work(struct cgpu_info *compac)
 {
-	struct COMPAC_INFO *info = compac->device_data;
-	uint32_t read_bytes;
+	int read_bytes;
 	unsigned char resp[1];
 	
 	compac_update_work(compac);
 
 	while (read_bytes) {
-		usb_read_once_timeout(compac, resp, 1, &read_bytes, 10, C_BF1_GETINFO);
+		usb_read_once_timeout(compac, (char *)resp, 1, &read_bytes, 10, C_BF1_GETINFO);
 	}
 }
 
@@ -152,18 +92,18 @@ static void chip_send(struct cgpu_info *compac, uint32_t b1, uint32_t b2, uint32
 
 	unsigned char req_tx[4] = { b1, b2, b3, b4 };
 	unsigned char resp_tx[5];
-	uint32_t read_bytes, crc;
+	int read_bytes;
 
 	req_tx[3] |= crc5(req_tx, 27);
 	
 	if (req_tx[0] == 0x84 && req_tx[3] == 0x11)
 		info->chips = 0;
 	
-	usb_write(compac, req_tx, 4, &read_bytes, C_REQUESTRESULTS);
+	usb_write(compac, (char *)req_tx, 4, &read_bytes, C_REQUESTRESULTS);
 
 	applog(LOG_INFO, "%s-%d TX: %02x %02x %02x %02x", compac->drv->name, compac->device_id, req_tx[0], req_tx[1], req_tx[2], req_tx[3]);
 	while (read_bytes) {
-		usb_read_timeout(compac, resp_tx, RX_RESP_SIZE, &read_bytes, 20, C_GETRESULTS);
+		usb_read_timeout(compac, (char *)resp_tx, RX_RESP_SIZE, &read_bytes, 20, C_GETRESULTS);
 
 		if (read_bytes == RX_RESP_SIZE) {
 			applog(LOG_INFO, "%s-%d RX: %02x %02x %02x %02x %02x", compac->drv->name, compac->device_id, resp_tx[0], resp_tx[1], resp_tx[2], resp_tx[3], resp_tx[4]);
@@ -175,30 +115,19 @@ static void chip_send(struct cgpu_info *compac, uint32_t b1, uint32_t b2, uint32
 	}
 }
 
-void go_faster(struct cgpu_info *compac) {
-	struct COMPAC_INFO *info = compac->device_data;
-	unsigned int bits = CP210X_BITS_DATA_8 | CP210X_BITS_PARITY_MARK;
-	uint32_t baudrate = CP210X_DATA_BAUD * 2;  // Baud 230400
-
-	chip_send(compac, 0x86, 0x10, 0x0D, 0x00); // Baud 230400
-	usb_transfer_data(compac, CP210X_TYPE_OUT, CP210X_REQUEST_BAUD, 0, info->interface, &baudrate, sizeof (baudrate), C_SETBAUD);
-	chip_send(compac, 0x86, 0x00, 0x8D, 0x00); // Baud 230400	
-	chip_send(compac, 0x84, 0x00, 0x04, 0x00); // Read reg  0x04
-}
-
 static int64_t compac_scanwork(struct thr_info *thr)
 {
 	struct cgpu_info *compac = thr->cgpu;
 	struct COMPAC_INFO *info = compac->device_data;
 	struct timeval now;
 
-	uint32_t i;
+	int read_bytes = 1;
+	int recv_data = 0;
+	int i, read_wait;
 	uint64_t hashes = 0;
 	uint32_t err = 0;
-	uint32_t read_bytes = 1;
-	uint32_t hcn_max = 1.25 * info->hashrate * RAMP_MS / 1000;
-	uint32_t max_task_wait = bound(info->fullscan_ms * 0.66, 2, 1000);
-	uint32_t read_wait;
+	uint32_t hcn_max = 1.5 * info->hashrate * RAMP_MS / 1000;
+	uint32_t max_task_wait = bound(info->fullscan_ms * 0.40, 2, 1000);
 
 	if (compac->usbinfo.nodev)
 		return -1;
@@ -209,9 +138,9 @@ static int64_t compac_scanwork(struct thr_info *thr)
 	while (read_bytes) {
 		memset(info->work_rx, 0, RX_RESP_SIZE);
 		read_wait = bound(max_task_wait / 8, 2, 100);
-		err = usb_read_timeout(compac, info->work_rx, RX_RESP_SIZE, &read_bytes, read_wait, C_GETRESULTS);
+		err = usb_read_timeout(compac, (char *)info->work_rx, RX_RESP_SIZE, &read_bytes, read_wait, C_GETRESULTS);
 		if (read_bytes > 0) {
-			hashes += 1;
+			recv_data = 1;
 			applog(LOG_DEBUG,"rx: %02x %02x %02x %02x %02x", info->work_rx[0], info->work_rx[1], info->work_rx[2], info->work_rx[3], info->work_rx[4]);
 		}
 		if (read_bytes == RX_RESP_SIZE && info->work_rx[4] >= 0x80) {
@@ -227,11 +156,10 @@ static int64_t compac_scanwork(struct thr_info *thr)
 	info->scanhash_ms = (info->scanhash_ms * 9 + ms_tdiff(&now, &info->last_scanhash)) / 10;
 	cgtime(&info->last_scanhash);
 
-	if (hashes || info->update_work || (ms_tdiff(&now, &info->last_task) > max_task_wait)) {
-		if (ms_tdiff(&now, &info->last_nonce) > 30000) {
-			
+	if (recv_data || info->update_work || (ms_tdiff(&now, &info->last_task) > max_task_wait)) {
+		if (ms_tdiff(&now, &info->last_nonce) > MAX_IDLE) {
 			if (info->failing) {
-				if (ms_tdiff(&now, &info->last_nonce) > 60000) {
+				if (ms_tdiff(&now, &info->last_nonce) > (MAX_IDLE * 2)) {
 					applog(LOG_ERR, "%s-%d: Device failed to respond to restart",
 						   compac->drv->name, compac->device_id);
 					return -1;
@@ -242,13 +170,11 @@ static int64_t compac_scanwork(struct thr_info *thr)
 				usb_reset(compac);
 				info->failing = true;
 			}
-			
 		} else {
-
-			info->job_id = (info->job_id + 1) % MAX_CHIPS;
+			info->job_id = (info->job_id + 1) % MAX_JOBS;
 			
 			if (info->update_work) {
-				for (i = 0; i < MAX_CHIPS; i++) {
+				for (i = 0; i < MAX_JOBS; i++) {
 					if (info->work[i])
 						free_work(info->work[i]);
 					info->work[i] = NULL;
@@ -269,12 +195,13 @@ static int64_t compac_scanwork(struct thr_info *thr)
 
 				init_ramp_task(info);
 
+				cgtime(&info->last_nonce);
 				hashes = info->ramp_hcn;
 			} else {
 				init_task(info);
 			}
 			
-			err = usb_write(compac, info->work_tx, TX_TASK_SIZE, &read_bytes, C_SENDWORK);
+			err = usb_write(compac, (char *)info->work_tx, TX_TASK_SIZE, &read_bytes, C_SENDWORK);
 			if (err != LIBUSB_SUCCESS || read_bytes != TX_TASK_SIZE) {
 				applog(LOG_WARNING,"Uh Oh 1.");
 				return -1;
@@ -353,7 +280,7 @@ static void compac_set_frequency(struct cgpu_info *compac, uint32_t frequency)
 	f[0] = (align_freq) & 0xff;
 	f[1] = (align_freq >> 8) & 0xff;
 
-	applog(LOG_WARNING,"set frequency: %.2f [%02x %02x]", info->frequency, f[1], f[0]);
+	applog(LOG_WARNING,"%s-%d: set frequency: %.2f [%02x %02x]",  compac->drv->name, compac->device_id, info->frequency, f[1], f[0]);
 	
 	chip_send(compac, 0x82, f[1], f[0], 0x00); // Set asic frequency
 
@@ -383,8 +310,6 @@ static bool compac_prepare(struct thr_info *thr)
 	cgtime(&info->last_scanhash);
 	cgtime(&info->last_nonce);
 	cgtime(&info->last_task);
-	cgtime(&info->next_freq_tune);
-	info->next_freq_tune.tv_sec += 30;
 	
 	memset(info->work_rx, 0, RX_RESP_SIZE);
 	
@@ -405,13 +330,17 @@ static bool compac_init(struct thr_info *thr)
 {
 	struct cgpu_info *compac = thr->cgpu;
 	struct COMPAC_INFO *info = compac->device_data;
-	int i, interval;
+	uint32_t baudrate = CP210X_DATA_BAUD * 2;  // Baud 230400
 
 	chip_send(compac, 0x86, 0x10, 0x1a, 0x00);
 	chip_send(compac, 0xAA, 0xB7, 0x25, 0x00); // Set Voltage   725
 	chip_send(compac, 0x84, 0x00, 0x00, 0x00); // get chain reg0x0
 	
-	go_faster(compac);
+	chip_send(compac, 0x86, 0x10, 0x0D, 0x00); // Baud 230400
+	usb_transfer_data(compac, CP210X_TYPE_OUT, CP210X_REQUEST_BAUD, 0, info->interface, &baudrate, sizeof (baudrate), C_SETBAUD);
+	chip_send(compac, 0x86, 0x00, 0x8D, 0x00); // Baud 230400	
+	chip_send(compac, 0x84, 0x00, 0x04, 0x00); // Read reg  0x04
+
 	chip_send(compac, 0x84, 0x00, 0x00, 0x00); // get chain reg0x0
 	info->difficulty = bound(info->chips - 1, 1, info->chips);
 	
@@ -419,7 +348,16 @@ static bool compac_init(struct thr_info *thr)
 
 	chip_send(compac, 0xAA, 0xB7, 0x25, 0x00); // Set Voltage   725
 
-	compac_set_frequency(compac, opt_compac_freq);
+	switch (info->ident) {
+		case IDENT_GSC:
+			compac_set_frequency(compac, opt_gekko_gsc_freq);
+			break;
+		case IDENT_GSD:
+			compac_set_frequency(compac, opt_gekko_gsd_freq);
+			break;
+		default:
+			break;
+	}
 	
 	return true;
 }
@@ -427,8 +365,11 @@ static bool compac_init(struct thr_info *thr)
 static void compac_statline(char *buf, size_t bufsiz, struct cgpu_info *compac)
 {
 	struct COMPAC_INFO *info = compac->device_data;
-
-	tailsprintf(buf, bufsiz, "COMPAC-%i %.2fMHz (%d/%d/%d/%d)", info->chips, info->frequency, info->scanhash_ms, info->task_ms, info->fullscan_ms, compac->hw_errors);
+	if (opt_log_output) {
+		tailsprintf(buf, bufsiz, "COMPAC-%i %.2fMHz (%d/%d/%d/%d)", info->chips, info->frequency, info->scanhash_ms, info->task_ms, info->fullscan_ms, compac->hw_errors);
+	} else {
+		tailsprintf(buf, bufsiz, "COMPAC-%i %.2fMHz HW:%d", info->chips, info->frequency, compac->hw_errors);		
+	}
 }
 
 static struct api_data *compac_api_stats(struct cgpu_info *compac)
@@ -453,10 +394,54 @@ static void compac_shutdown(struct thr_info *thr)
 	usb_transfer_data(compac, CP210X_TYPE_OUT, CP210X_REQUEST_BAUD, 0, info->interface, &baudrate, sizeof (baudrate), C_SETBAUD);
 }
 
+uint32_t crc5(unsigned char *ptr, uint32_t len) 
+{
+	unsigned char c[5] = {1, 1, 1, 1, 1};
+	uint32_t i, c1, ptr_idx = 0;
+	
+	for (i = 0; i < len; i++) {
+		c1 = c[1];
+		c[1] = c[0];
+		c[0] = c[4] ^ ((ptr[ptr_idx] & (0x80 >> (i % 8))) ? 1 : 0);
+		c[4] = c[3];
+		c[3] = c[2];
+		c[2] = c1 ^ c[0];
+		
+		if (((i + 1) % 8) == 0)
+			ptr_idx++;
+	}
+	return (c[4] * 0x10) | (c[3] * 0x08) | (c[2] * 0x04) | (c[1] * 0x02) | (c[0] * 0x01);
+}
+
+uint64_t bound(uint64_t value, uint64_t lower_bound, uint64_t upper_bound) 
+{
+	if (value < lower_bound)
+		return lower_bound;
+	if (value > upper_bound)
+		return upper_bound;
+	return value;
+}
+
+void stuff_reverse(unsigned char *dst, unsigned char *src, uint32_t len)
+{
+	uint32_t i;
+	for (i = 0; i < len; i++) {
+		dst[i] = src[len - i - 1];
+	}
+}
+
+void stuff_int32(unsigned char *dst, uint32_t x)
+{
+	dst[0] = (x >>  0) & 0xff;
+	dst[1] = (x >>  8) & 0xff;
+	dst[2] = (x >> 16) & 0xff;
+	dst[3] = (x >> 24) & 0xff;
+}
+
 struct device_drv gekko_drv = {
 	.drv_id              = DRIVER_gekko,
-	.dname               = "gekko",
-	.name                = "GSD",
+	.dname               = "GekkoScience",
+	.name                = "GSX",
 	.hash_work           = &hash_driver_work,
 	.get_api_stats       = compac_api_stats,
 	.get_statline_before = compac_statline,
