@@ -92,18 +92,22 @@ static void chip_send(struct cgpu_info *compac, uint32_t b1, uint32_t b2, uint32
 
 	unsigned char req_tx[4] = { b1, b2, b3, b4 };
 	unsigned char resp_tx[5];
-	int read_bytes;
+	int read_bytes = 1;
+	int read_wait = 20;
 
 	req_tx[3] |= crc5(req_tx, 27);
 
 	if (req_tx[0] == 0x84 && req_tx[3] == 0x11)
 		info->chips = 0;
 
+	if (req_tx[0] == 0x84)
+		read_wait = 1000;
+
 	usb_write(compac, (char *)req_tx, 4, &read_bytes, C_REQUESTRESULTS);
 
 	applog(LOG_INFO, "%s %d TX: %02x %02x %02x %02x", compac->drv->name, compac->device_id, req_tx[0], req_tx[1], req_tx[2], req_tx[3]);
 	while (read_bytes) {
-		usb_read_timeout(compac, (char *)resp_tx, RX_RESP_SIZE, &read_bytes, 20, C_GETRESULTS);
+		usb_read_timeout(compac, (char *)resp_tx, RX_RESP_SIZE, &read_bytes, read_wait, C_GETRESULTS);
 
 		if (read_bytes == RX_RESP_SIZE) {
 			applog(LOG_INFO, "%s %d RX: %02x %02x %02x %02x %02x", compac->drv->name, compac->device_id, resp_tx[0], resp_tx[1], resp_tx[2], resp_tx[3], resp_tx[4]);
@@ -158,7 +162,7 @@ static int64_t compac_scanwork(struct thr_info *thr)
 	int i, cpu_yield;
 	uint64_t hashes = 0;
 	uint32_t err = 0;
-	uint32_t hcn_max = 1.1 * info->hashrate * RAMP_MS / 1000;
+	uint32_t hcn_max = 1.25 * info->hashrate * RAMP_MS / 1000;
 	uint32_t max_task_wait = bound(info->fullscan_ms * 0.40, 5, 1000);
 
 	if (info->ramping < RAMP_CT)
@@ -364,33 +368,36 @@ static bool compac_init(struct thr_info *thr)
 	struct cgpu_info *compac = thr->cgpu;
 	struct COMPAC_INFO *info = compac->device_data;
 	uint32_t baudrate = CP210X_DATA_BAUD * 2;  // Baud 230400
-
-	chip_send(compac, 0x86, 0x10, 0x1a, 0x00);
-	chip_send(compac, 0xAA, 0xB7, 0x25, 0x00); // Set Voltage   725
-	chip_send(compac, 0x84, 0x00, 0x00, 0x00); // get chain reg0x0
-
-	chip_send(compac, 0x86, 0x10, 0x0D, 0x00); // Baud 230400
-	usb_transfer_data(compac, CP210X_TYPE_OUT, CP210X_REQUEST_BAUD, 0, info->interface, &baudrate, sizeof (baudrate), C_SETBAUD);
-	chip_send(compac, 0x86, 0x00, 0x8D, 0x00); // Baud 230400
-	chip_send(compac, 0x84, 0x00, 0x04, 0x00); // Read reg  0x04
-
-	chip_send(compac, 0x84, 0x00, 0x00, 0x00); // get chain reg0x0
-	info->difficulty = bound(info->chips - 1, 1, info->chips);
-
-	applog(LOG_WARNING,"found %d chip(s) on %s %d", info->chips, compac->drv->name, compac->device_id);
-
-	chip_send(compac, 0xAA, 0xB7, 0x25, 0x00); // Set Voltage   725
+	uint32_t expected_chips = 1;
+	float frequency = 150;
 
 	switch (info->ident) {
 		case IDENT_GSC:
-			compac_set_frequency(compac, opt_gekko_gsc_freq);
+			expected_chips = 1;
+			frequency = opt_gekko_gsc_freq;
 			break;
 		case IDENT_GSD:
-			compac_set_frequency(compac, opt_gekko_gsd_freq);
+			expected_chips = 2;
+			frequency = opt_gekko_gsd_freq;
 			break;
 		default:
 			break;
 	}
+
+	chip_send(compac, 0x86, 0x10, 0x0D, 0x00); // Baud 230400
+	usb_transfer_data(compac, CP210X_TYPE_OUT, CP210X_REQUEST_BAUD, 0, info->interface, &baudrate, sizeof (baudrate), C_SETBAUD);
+
+	chip_send(compac, 0x84, 0x00, 0x04, 0x00); // Read reg  0x04
+	chip_send(compac, 0x84, 0x00, 0x00, 0x00); // get chain reg0x0
+
+	if (info->chips < expected_chips) {
+		chip_send(compac, 0x84, 0x00, 0x00, 0x00); // get chain reg0x0
+	}
+	info->difficulty = bound(info->chips - 1, 1, info->chips);
+
+	applog(LOG_WARNING,"found %d chip(s) on %s %d", info->chips, compac->drv->name, compac->device_id);
+
+	compac_set_frequency(compac, frequency);
 
 	return true;
 }
