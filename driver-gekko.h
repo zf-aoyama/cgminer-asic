@@ -12,26 +12,30 @@
 #define MAX_IDLE 30000           // MS wait before we consider device non functional.
 
 struct COMPAC_INFO {
-	
+
 	enum sub_ident ident;        // Miner identity
 	struct thr_info *thr;        // Running Thread
-	
+	struct thr_info rthr;        // Listening Thread
+
 	float frequency;             // Chip Frequency
 
 	uint32_t scanhash_ms;		 // Avg time(ms) inside scanhash loop
 	uint32_t task_ms;			 // Avg time(ms) between task sent to device
 	uint32_t fullscan_ms;		 // Estimated time(ms) for full nonce range
 	uint64_t hashrate;           // Estimated hashrate = 55M x Chips x Frequency
-	
+
 	uint64_t ramp_hcn;           // HCN high watermark at ramping
 	uint32_t prev_nonce;         // Last nonce found
-	
+
 	bool failing;                // Flag failing sticks
-	
+	bool active;                 // Listen for responses
+	bool shutdown;               // Listen thread shutdown flag
+
 	int accepted;                // Nonces accepted
 	int nonces;                  // Nonces found
+	uint64_t hashes;             // Hashes completed
 	int interface;               // USB interface
-	
+
 	uint32_t difficulty;         // Used to reduce flashes per second
 	uint32_t chips;              // Stores number of chips found
 	uint32_t ramping;            // Ramping incrementer
@@ -46,9 +50,9 @@ struct COMPAC_INFO {
 
 	unsigned char work_tx[TX_TASK_SIZE];    // Task transmit buffer
 	unsigned char work_rx[RX_RESP_SIZE];    // Receive buffer
-	
+
 	struct work *work[MAX_JOBS];            // Work ring buffer
-	
+
 };
 
 void stuff_int32(unsigned char *dst, uint32_t x);
