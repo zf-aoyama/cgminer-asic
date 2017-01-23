@@ -17,6 +17,8 @@ struct COMPAC_INFO {
 	struct thr_info *thr;        // Running Thread
 	struct thr_info rthr;        // Listening Thread
 
+	pthread_mutex_t lock;        // Mutex
+
 	float frequency;             // Chip Frequency
 
 	uint32_t scanhash_ms;		 // Avg time(ms) inside scanhash loop

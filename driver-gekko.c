@@ -1,5 +1,7 @@
 #include "driver-gekko.h"
 
+static void compac_set_frequency(struct cgpu_info *compac, uint32_t frequency);
+
 static uint32_t compac_check_nonce(struct cgpu_info *compac)
 {
 	struct COMPAC_INFO *info = compac->device_data;
@@ -138,7 +140,9 @@ static void *compac_listen(void *object)
 				applog(LOG_DEBUG,"rx: %02x %02x %02x %02x %02x", info->work_rx[0], info->work_rx[1], info->work_rx[2], info->work_rx[3], info->work_rx[4]);
 			}
 			if (read_bytes == RX_RESP_SIZE && info->work_rx[4] >= 0x80) {
+				mutex_lock(&info->lock);
 				info->hashes += compac_check_nonce(compac);
+				mutex_unlock(&info->lock);
 			}
 			if (err < 0 && err != LIBUSB_ERROR_TIMEOUT) {
 				applog(LOG_ERR, "%s %i: Comms error (rerr=%d amt=%d)", compac->drv->name, compac->device_id, err, read_bytes);
@@ -160,6 +164,7 @@ static int64_t compac_scanwork(struct thr_info *thr)
 
 	int read_bytes = 1;
 	int i, cpu_yield;
+	float frequency = 100;
 	uint64_t hashes = 0;
 	uint32_t err = 0;
 	uint32_t hcn_max = 1.25 * info->hashrate * RAMP_MS / 1000;
@@ -193,11 +198,13 @@ static int64_t compac_scanwork(struct thr_info *thr)
 			info->job_id = (info->job_id + 1) % MAX_JOBS;
 
 			if (info->update_work) {
+				mutex_lock(&info->lock);
 				for (i = 0; i < MAX_JOBS; i++) {
 					if (info->work[i])
 						free_work(info->work[i]);
 					info->work[i] = NULL;
 				}
+				mutex_unlock(&info->lock);
 				info->update_work = 0;
 			}
 
@@ -219,6 +226,21 @@ static int64_t compac_scanwork(struct thr_info *thr)
 				info->ramp_hcn = bound(info->ramp_hcn, 0, 0xffffffff);
 
 				init_ramp_task(info);
+
+				if (info->ramping == RAMP_CT / 20) {
+					switch (info->ident) {
+						case IDENT_GSC:
+							frequency = opt_gekko_gsc_freq;
+							break;
+						case IDENT_GSD:
+							frequency = opt_gekko_gsd_freq;
+							break;
+						default:
+							break;
+					}
+
+					compac_set_frequency(compac, frequency);
+				}
 
 				cgtime(&info->last_nonce);
 				hashes = info->hashrate * RAMP_MS / 1000;
@@ -295,8 +317,13 @@ static void compac_set_frequency(struct cgpu_info *compac, uint32_t frequency)
 	unsigned char f[2];
 
 	frequency = bound(frequency, 100, 500);
+	frequency = ceil(100 * (frequency - 100) / 625.0) * 6.25 + 100;
 
-	info->frequency = ceil(100 * (frequency - 100) / 625.0) * 6.25 + 100;
+	if (info->frequency == frequency)
+		return;
+
+	info->frequency = frequency;
+
 	info->hashrate = info->frequency * info->chips * 55 * 1000000;
 	info->fullscan_ms = 1000.0 * 0xffffffffull / info->hashrate;
 
@@ -342,6 +369,8 @@ static bool compac_prepare(struct thr_info *thr)
 	cgtime(&info->last_nonce);
 	cgtime(&info->last_task);
 
+	pthread_mutex_init(&info->lock, NULL);
+
 	memset(info->work_rx, 0, RX_RESP_SIZE);
 
 	for (i = 0; i < 9; i++)
@@ -368,21 +397,7 @@ static bool compac_init(struct thr_info *thr)
 	struct cgpu_info *compac = thr->cgpu;
 	struct COMPAC_INFO *info = compac->device_data;
 	uint32_t baudrate = CP210X_DATA_BAUD * 2;  // Baud 230400
-	uint32_t expected_chips = 1;
-	float frequency = 150;
-
-	switch (info->ident) {
-		case IDENT_GSC:
-			expected_chips = 1;
-			frequency = opt_gekko_gsc_freq;
-			break;
-		case IDENT_GSD:
-			expected_chips = 2;
-			frequency = opt_gekko_gsd_freq;
-			break;
-		default:
-			break;
-	}
+	float frequency = 100;
 
 	chip_send(compac, 0x86, 0x10, 0x0D, 0x00); // Baud 230400
 	usb_transfer_data(compac, CP210X_TYPE_OUT, CP210X_REQUEST_BAUD, 0, info->interface, &baudrate, sizeof (baudrate), C_SETBAUD);
@@ -390,9 +405,6 @@ static bool compac_init(struct thr_info *thr)
 	chip_send(compac, 0x84, 0x00, 0x04, 0x00); // Read reg  0x04
 	chip_send(compac, 0x84, 0x00, 0x00, 0x00); // get chain reg0x0
 
-	if (info->chips < expected_chips) {
-		chip_send(compac, 0x84, 0x00, 0x00, 0x00); // get chain reg0x0
-	}
 	info->difficulty = bound(info->chips - 1, 1, info->chips);
 
 	applog(LOG_WARNING,"found %d chip(s) on %s %d", info->chips, compac->drv->name, compac->device_id);
