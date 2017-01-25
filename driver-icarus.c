@@ -42,10 +42,6 @@
 
 #include "config.h"
 
-#ifdef WIN32
-#include <windows.h>
-#endif
-
 #include "compat.h"
 #include "miner.h"
 #include "usbutils.h"
@@ -382,6 +378,7 @@ struct ICARUS_WORK {
 #define ANT_U1_DEFFREQ 200
 #define ANT_U3_DEFFREQ 225
 #define ANT_U3_MAXFREQ 250
+
 struct {
 	float freq;
 	uint16_t hex;

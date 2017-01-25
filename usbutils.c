@@ -4003,7 +4003,8 @@ union semun {
 #else
 static LPSECURITY_ATTRIBUTES unsec(LPSECURITY_ATTRIBUTES sec)
 {
-	FreeSid(((PSECURITY_DESCRIPTOR)(sec->lpSecurityDescriptor))->Group);
+	SECURITY_DESCRIPTOR *sd = (PSECURITY_DESCRIPTOR)(sec->lpSecurityDescriptor);
+	FreeSid(sd->Group);
 	free(sec->lpSecurityDescriptor);
 	free(sec);
 	return NULL;
@@ -4016,7 +4017,7 @@ static LPSECURITY_ATTRIBUTES mksec(const char *dname, uint8_t bus_number, uint8_
 	LPSECURITY_ATTRIBUTES sec_att = NULL;
 	PSECURITY_DESCRIPTOR sec_des = NULL;
 
-	sec_des = cgmalloc(sizeof(*sec_des));
+	sec_des = cgmalloc(SECURITY_DESCRIPTOR_MIN_LENGTH);
 
 	if (!InitializeSecurityDescriptor(sec_des, SECURITY_DESCRIPTOR_REVISION)) {
 		applog(LOG_ERR,
