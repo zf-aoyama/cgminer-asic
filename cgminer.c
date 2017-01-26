@@ -44,6 +44,7 @@
 #ifndef WIN32
 #include <sys/resource.h>
 #else
+#include <winsock2.h>
 #include <windows.h>
 #endif
 #include <ccan/opt/opt.h>
@@ -178,7 +179,7 @@ int opt_log_interval = 5;
 static const int max_queue = 1;
 const int max_scantime = 60;
 const int max_expiry = 600;
-unsigned long long global_hashrate;
+uint64_t global_hashrate;
 unsigned long global_quota_gcd = 1;
 time_t last_getwork;
 int opt_pool_fallback = 120;
@@ -232,7 +233,6 @@ char *opt_icarus_options = NULL;
 char *opt_icarus_timing = NULL;
 float opt_anu_freq = 250;
 float opt_au3_freq = 225;
-float opt_compac_freq = 150;
 int opt_au3_volt = 775;
 float opt_rock_freq = 270;
 #endif
@@ -256,6 +256,8 @@ static char *opt_set_avalon4_freq;
 #ifdef USE_AVALON7
 static char *opt_set_avalon7_fan;
 static char *opt_set_avalon7_voltage;
+static char *opt_set_avalon7_voltage_level;
+static char *opt_set_avalon7_voltage_offset;
 static char *opt_set_avalon7_freq;
 #endif
 #ifdef USE_AVALON_MINER
@@ -264,6 +266,10 @@ static char *opt_set_avalonm_freq;
 #endif
 #ifdef USE_BLOCKERUPTER
 int opt_bet_clk = 0;
+#endif
+#ifdef USE_GEKKO
+float opt_gekko_gsc_freq = 150;
+float opt_gekko_gsd_freq = 100;
 #endif
 #ifdef USE_HASHRATIO
 #include "driver-hashratio.h"
@@ -1185,18 +1191,20 @@ static void load_temp_cutoffs()
 	}
 }
 
-static char *set_float_100_to_500(const char *arg, float *i)
+#ifdef USE_GEKKO
+static char *set_float_0_to_500(const char *arg, float *i)
 {
 	char *err = opt_set_floatval(arg, i);
 
 	if (err)
 		return err;
 
-	if (*i < 100 || *i > 500)
+	if (*i < 0 || *i > 500)
 		return "Value out of range";
 
 	return NULL;
 }
+#endif
 
 static char *set_float_125_to_500(const char *arg, float *i)
 {
@@ -1279,9 +1287,6 @@ static struct opt_table opt_config_table[] = {
 	OPT_WITH_ARG("--au3-volt",
 		     set_int_0_to_9999, &opt_show_intval, &opt_au3_volt,
 		     "Set AntminerU3 voltage in mv, range 725-850, 0 to not set"),
-	OPT_WITH_ARG("--compac-freq",
-		     set_float_100_to_500, &opt_show_floatval, &opt_compac_freq,
-		     "Set GekkoScience Compac frequency in MHz, range 100-500"),
 #endif
 #ifdef USE_AVALON
 	OPT_WITHOUT_ARG("--avalon-auto",
@@ -1407,6 +1412,12 @@ static struct opt_table opt_config_table[] = {
 	OPT_WITH_CBARG("--avalon7-voltage",
 		     set_avalon7_voltage, NULL, &opt_set_avalon7_voltage,
 		     "Set Avalon7 default core voltage, in millivolts, step: 78"),
+	OPT_WITH_CBARG("--avalon7-voltage-level",
+		     set_avalon7_voltage_level, NULL, &opt_set_avalon7_voltage_level,
+		     "Set Avalon7 default level of core voltage, range:[0, 15], step: 1"),
+	OPT_WITH_CBARG("--avalon7-voltage-offset",
+		     set_avalon7_voltage_offset, NULL, &opt_set_avalon7_voltage_offset,
+		     "Set Avalon7 default offset of core voltage, range:[-2, 1], step: 1"),
 	OPT_WITH_CBARG("--avalon7-freq",
 		     set_avalon7_freq, NULL, &opt_set_avalon7_freq,
 		     "Set Avalon7 default frequency, range:[24, 1404], step: 12, example: 500"),
@@ -1609,6 +1620,14 @@ static struct opt_table opt_config_table[] = {
         OPT_WITH_ARG("--bet-clk",
                      opt_set_intval, opt_show_intval, &opt_bet_clk,
                      "Set Block Erupter clock"),
+#endif
+#ifdef USE_GEKKO
+	OPT_WITH_ARG("--gekko-2pac-freq",
+		     set_float_0_to_500, opt_show_floatval, &opt_gekko_gsd_freq,
+		     "Set GekkoScience 2Pac frequency in MHz, range 6.25-500"),
+	OPT_WITH_ARG("--gekko-compac-freq",
+		     set_float_0_to_500, opt_show_floatval, &opt_gekko_gsc_freq,
+		     "Set GekkoScience Compac frequency in MHz, range 6.25-500"),
 #endif
 #ifdef HAVE_LIBCURL
 	OPT_WITH_ARG("--btc-address",
@@ -1937,18 +1956,21 @@ static char *parse_config(json_t *config, bool fileconf)
 		fileconf_load = 1;
 
 	for (opt = opt_config_table; opt->type != OPT_END; opt++) {
-		char *p, *name;
+		char *p, *saved, *name;
 
 		/* We don't handle subtables. */
 		assert(!(opt->type & OPT_SUBTABLE));
 
-		if (!opt->names)
+		if (!opt->names || !strlen(opt->names))
 			continue;
 
 		/* Pull apart the option name(s). */
 		name = strdup(opt->names);
-		for (p = strtok(name, "|"); p; p = strtok(NULL, "|")) {
+		for (p = strtok_r(name, "|", &saved); p != NULL; p = strtok_r(NULL, "|", &saved)) {
 			char *err = NULL;
+
+			if (strlen(p) < 3)
+				continue;
 
 			/* Ignore short options. */
 			if (p[1] != '-')
@@ -2663,7 +2685,7 @@ static bool gbt_solo_decode(struct pool *pool, json_t *res_val)
 	uint64_t coinbasevalue;
 	const char *flags;
 	const char *bits;
-	char header[228];
+	char header[260];
 	int ofs = 0, len;
 	uint64_t *u64;
 	uint32_t *u32;
@@ -2842,7 +2864,7 @@ static bool gbt_solo_decode(struct pool *pool, json_t *res_val)
 	pool->coinbase_len = 41 + ofs + 4 + 1 + 8 + 1 + 25 + witness_txout_len + 4;
 	cg_wunlock(&pool->gbt_lock);
 
-	snprintf(header, 225, "%s%s%s%s%s%s%s",
+	snprintf(header, 257, "%s%s%s%s%s%s%s",
 		 pool->bbversion,
 		 pool->prev_hash,
 		 "0000000000000000000000000000000000000000000000000000000000000000",
@@ -2850,7 +2872,7 @@ static bool gbt_solo_decode(struct pool *pool, json_t *res_val)
 		 pool->nbit,
 		 "00000000", /* nonce */
 		 workpadding);
-	if (unlikely(!hex2bin(pool->header_bin, header, 112)))
+	if (unlikely(!hex2bin(pool->header_bin, header, 128)))
 		quit(1, "Failed to hex2bin header in gbt_solo_decode");
 
 	return true;
@@ -4186,13 +4208,8 @@ static void kill_mining(void)
 		if (thr && PTH(thr) != 0L)
 			pth = &thr->pth;
 		thr_info_cancel(thr);
-#ifndef WIN32
 		if (pth && *pth)
 			pthread_join(*pth, NULL);
-#else
-		if (pth && pth->p)
-			pthread_join(*pth, NULL);
-#endif
 	}
 }
 
@@ -4968,7 +4985,7 @@ static void restart_threads(void)
 
 	cgtime(&restart_tv_start);
 	if (unlikely(pthread_create(&rthread, NULL, restart_thread, NULL)))
-		quit(1, "Failed to create restart thread");
+		quithere(1, "Failed to create restart thread errno=%d", errno);
 }
 
 static void signal_work_update(void)
@@ -5123,13 +5140,15 @@ static bool test_work_current(struct work *work)
 				applog(LOG_NOTICE, "Stratum from pool %d detected new block at height %d",
 				       pool->pool_no, height);
 			} else {
-				applog(LOG_NOTICE, "%sLONGPOLL from pool %d detected new block",
-				       work->gbt ? "GBT " : "", work->pool->pool_no);
+				applog(LOG_NOTICE, "%sLONGPOLL from pool %d detected new block at height %d",
+				       work->gbt ? "GBT " : "", pool->pool_no, height);
 			}
 		} else if (have_longpoll && !pool->gbt_solo)
-			applog(LOG_NOTICE, "New block detected on network before pool notification");
+			applog(LOG_NOTICE, "New block detected on network before pool notification from pool %d at height %d",
+			       pool->pool_no, height);
 		else if (!pool->gbt_solo)
-			applog(LOG_NOTICE, "New block detected on network");
+			applog(LOG_NOTICE, "New block detected on network from pool %d at height %d",
+			       pool->pool_no, height);
 		restart_threads();
 	} else {
 		if (memcmp(pool->prev_block, bedata, 32)) {
@@ -5163,7 +5182,7 @@ static bool test_work_current(struct work *work)
 					       pool->pool_no);
 				} else {
 					applog(LOG_NOTICE, "%sLONGPOLL from pool %d requested work restart",
-					       work->gbt ? "GBT " : "", work->pool->pool_no);
+					       work->gbt ? "GBT " : "", pool->pool_no);
 				}
 				restart_threads();
 			}
