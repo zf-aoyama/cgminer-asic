@@ -1,7 +1,5 @@
 #include "driver-gekko.h"
 
-static void compac_set_frequency(struct cgpu_info *compac, uint32_t frequency);
-
 static uint32_t compac_check_nonce(struct cgpu_info *compac)
 {
 	struct COMPAC_INFO *info = compac->device_data;
@@ -164,7 +162,6 @@ static int64_t compac_scanwork(struct thr_info *thr)
 
 	int read_bytes = 1;
 	int i, cpu_yield;
-	float frequency = 100;
 	uint64_t hashes = 0;
 	uint32_t err = 0;
 	uint32_t hcn_max = 1.25 * info->hashrate * RAMP_MS / 1000;
@@ -226,21 +223,6 @@ static int64_t compac_scanwork(struct thr_info *thr)
 				info->ramp_hcn = bound(info->ramp_hcn, 0, 0xffffffff);
 
 				init_ramp_task(info);
-
-				if (info->ramping == RAMP_CT / 20) {
-					switch (info->ident) {
-						case IDENT_GSC:
-							frequency = opt_gekko_gsc_freq;
-							break;
-						case IDENT_GSD:
-							frequency = opt_gekko_gsd_freq;
-							break;
-						default:
-							break;
-					}
-
-					compac_set_frequency(compac, frequency);
-				}
 
 				cgtime(&info->last_nonce);
 				hashes = info->hashrate * RAMP_MS / 1000;
@@ -309,15 +291,15 @@ static void compac_detect(bool __maybe_unused hotplug)
 	usb_detect(&gekko_drv, compac_detect_one);
 }
 
-static void compac_set_frequency(struct cgpu_info *compac, uint32_t frequency)
+static void compac_set_frequency(struct cgpu_info *compac, float frequency)
 {
 	struct COMPAC_INFO *info = compac->device_data;
 
-	uint32_t p1, p2, p3, align_freq, i, interval;
+	uint32_t r, r1, r2, r3, p1, p2, pll, i, interval;
 	unsigned char f[2];
 
-	frequency = bound(frequency, 100, 500);
-	frequency = ceil(100 * (frequency - 100) / 625.0) * 6.25 + 100;
+	frequency = bound(frequency, 6, 500);
+	frequency = ceil(100 * (frequency - 6.25) / 625.0) * 6.25 + 6.25;
 
 	if (info->frequency == frequency)
 		return;
@@ -327,14 +309,23 @@ static void compac_set_frequency(struct cgpu_info *compac, uint32_t frequency)
 	info->hashrate = info->frequency * info->chips * 55 * 1000000;
 	info->fullscan_ms = 1000.0 * 0xffffffffull / info->hashrate;
 
-	p1 = pow(2, ceil((info->frequency + 1)/200) - 1);
-	p2 = 0x0080 * (info->frequency / p1 - 100) / 6.25 + 0x0784 - ceil((p1 + 1.0)/2);
-	p3 = 0x0080 * info->frequency / (ceil(p1 / 2.0) * 6.25) - 0x0080 + (p1 * 3 % 7);
+	r = floor(log(info->frequency/25) / log(2));
 
-	align_freq = ((uint32_t)(info->frequency / 6.25) % p1 == 0 ? p2 : p3);
+	r1 = 0x0785 - r;
+	r2 = 0x200 / pow(2, r);
+	r3 = 25 * pow(2, r);
+	
+	p1 = r1 + r2 * (info->frequency - r3) / 6.25;
+	p2 = p1 * 2 + (0x7f + r);
+	
+	pll = ((uint32_t)(info->frequency) % 25 == 0 ? p1 : p2);
+	
+	if (info->frequency < 100) {
+		pll = 0x0783 - 0x80 * (100 - info->frequency) / 6.25;
+	}
 
-	f[0] = (align_freq) & 0xff;
-	f[1] = (align_freq >> 8) & 0xff;
+	f[0] = (pll) & 0xff;
+	f[1] = (pll >> 8) & 0xff;
 
 	applog(LOG_WARNING,"%s %d: set frequency: %.2f [%02x %02x]",  compac->drv->name, compac->device_id, info->frequency, f[1], f[0]);
 
@@ -409,8 +400,19 @@ static bool compac_init(struct thr_info *thr)
 
 	applog(LOG_WARNING,"found %d chip(s) on %s %d", info->chips, compac->drv->name, compac->device_id);
 
-	compac_set_frequency(compac, frequency);
+	switch (info->ident) {
+		case IDENT_GSC:
+			frequency = opt_gekko_gsc_freq;
+			break;
+		case IDENT_GSD:
+			frequency = opt_gekko_gsd_freq;
+			break;
+		default:
+			break;
+	}
 
+	compac_set_frequency(compac, frequency);
+				
 	return true;
 }
 
