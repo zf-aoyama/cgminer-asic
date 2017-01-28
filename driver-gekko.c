@@ -61,17 +61,6 @@ static void compac_flush_work(struct cgpu_info *compac)
 	}
 }
 
-static void init_ramp_task(struct COMPAC_INFO *info)
-{
-	memset(info->work_tx, 0, TX_TASK_SIZE);
-
-	info->work_tx[40] = (info->ramp_hcn >> 24) & 0xff;
-	info->work_tx[41] = (info->ramp_hcn >> 16) & 0xff;
-	info->work_tx[42] = (info->ramp_hcn >> 8)  & 0xff;
-	info->work_tx[43] = (info->ramp_hcn)       & 0xff;
-	info->work_tx[51] = info->job_id;
-}
-
 static void init_task(struct COMPAC_INFO *info)
 {
 	struct work *work = info->work[info->job_id];
@@ -79,10 +68,17 @@ static void init_task(struct COMPAC_INFO *info)
 
 	memset(info->work_tx, 0, TX_TASK_SIZE);
 
-	stuff_reverse(info->work_tx, work->midstate, 32);
-	stuff_reverse(info->work_tx + 52, work->data + 64, 12);
+	if (info->active) {
+		stuff_reverse(info->work_tx, work->midstate, 32);
+		stuff_reverse(info->work_tx + 52, work->data + 64, 12);
 
-	info->work_tx[39] = ticket_mask & 0xff;
+		info->work_tx[39] = ticket_mask & 0xff;
+	}
+
+	info->work_tx[40] = (info->ramp_hcn >> 24) & 0xff;
+	info->work_tx[41] = (info->ramp_hcn >> 16) & 0xff;
+	info->work_tx[42] = (info->ramp_hcn >> 8)  & 0xff;
+	info->work_tx[43] = (info->ramp_hcn)       & 0xff;
 	info->work_tx[51] = info->job_id & 0xff;
 }
 
@@ -222,14 +218,14 @@ static int64_t compac_scanwork(struct thr_info *thr)
 				info->ramp_hcn += hcn_max / RAMP_CT;
 				info->ramp_hcn = bound(info->ramp_hcn, 0, 0xffffffff);
 
-				init_ramp_task(info);
-
 				cgtime(&info->last_nonce);
 				hashes = info->hashrate * RAMP_MS / 1000;
 			} else {
 				info->active = true;
-				init_task(info);
+				info->ramp_hcn = (0xffffffff / info->chips);
 			}
+
+			init_task(info);
 
 			err = usb_write(compac, (char *)info->work_tx, TX_TASK_SIZE, &read_bytes, C_SENDWORK);
 			if (err != LIBUSB_SUCCESS || read_bytes != TX_TASK_SIZE) {
@@ -299,7 +295,7 @@ static void compac_set_frequency(struct cgpu_info *compac, float frequency)
 	unsigned char f[2];
 
 	frequency = bound(frequency, 6, 500);
-	frequency = ceil(100 * (frequency - 6.25) / 625.0) * 6.25 + 6.25;
+	frequency = ceil(100 * (frequency) / 625.0) * 6.25;
 
 	if (info->frequency == frequency)
 		return;
@@ -353,6 +349,7 @@ static bool compac_prepare(struct thr_info *thr)
 	info->difficulty = 1;
 	info->ramp_hcn = 0;
 	info->hashes = 0;
+	info->active = false;
 	info->shutdown = false;
 
 	cgtime(&info->start_time);
