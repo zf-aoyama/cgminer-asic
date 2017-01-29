@@ -30,7 +30,7 @@ struct COMPAC_INFO {
 	uint32_t prev_nonce;         // Last nonce found
 
 	bool failing;                // Flag failing sticks
-	bool active;                 // Listen for responses
+	bool active;                 // Done ramping, send live work and get nonces
 	bool shutdown;               // Listen thread shutdown flag
 
 	int accepted;                // Nonces accepted
