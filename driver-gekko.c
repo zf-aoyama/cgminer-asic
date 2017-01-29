@@ -129,7 +129,7 @@ static void *compac_listen(void *object)
 
 		if (info->active) {
 			memset(info->work_rx, 0, RX_RESP_SIZE);
-			err = usb_read_timeout(compac, (char *)info->work_rx, RX_RESP_SIZE, &read_bytes, 1000, C_GETRESULTS);
+			err = usb_read_timeout(compac, (char *)info->work_rx, RX_RESP_SIZE, &read_bytes, 100, C_GETRESULTS);
 			if (read_bytes > 0) {
 				applog(LOG_DEBUG,"rx: %02x %02x %02x %02x %02x", info->work_rx[0], info->work_rx[1], info->work_rx[2], info->work_rx[3], info->work_rx[4]);
 			}
@@ -161,7 +161,10 @@ static int64_t compac_scanwork(struct thr_info *thr)
 	uint64_t hashes = 0;
 	uint32_t err = 0;
 	uint32_t hcn_max = 1.25 * info->hashrate * RAMP_MS / 1000;
-	uint32_t max_task_wait = bound(info->fullscan_ms * 0.40, 5, 1000);
+	uint32_t max_task_wait = bound(info->fullscan_ms * 0.80, 5, 1000);
+
+	if (compac->usbinfo.nodev || !info->chips)
+		return -1;
 
 	if (info->ramping < RAMP_CT)
 		max_task_wait = RAMP_MS;
@@ -222,7 +225,8 @@ static int64_t compac_scanwork(struct thr_info *thr)
 				hashes = info->hashrate * RAMP_MS / 1000;
 			} else {
 				info->active = true;
-				info->ramp_hcn = (0xffffffff / info->chips);
+				//info->ramp_hcn = (0xffffffff / info->chips);
+				info->ramp_hcn = 0;
 			}
 
 			init_task(info);
@@ -238,7 +242,7 @@ static int64_t compac_scanwork(struct thr_info *thr)
 		}
 	}
 
-	cpu_yield = bound(max_task_wait/10,1,100);
+	cpu_yield = bound(max_task_wait / 20, 1, 100);
 	cgsleep_ms(cpu_yield);
 	return hashes;
 }
@@ -384,11 +388,11 @@ static bool compac_init(struct thr_info *thr)
 {
 	struct cgpu_info *compac = thr->cgpu;
 	struct COMPAC_INFO *info = compac->device_data;
-	uint32_t baudrate = CP210X_DATA_BAUD * 2;  // Baud 230400
+//	uint32_t baudrate = CP210X_DATA_BAUD * 2;  // Baud 230400
 	float frequency = 100;
 
-	chip_send(compac, 0x86, 0x10, 0x0D, 0x00); // Baud 230400
-	usb_transfer_data(compac, CP210X_TYPE_OUT, CP210X_REQUEST_BAUD, 0, info->interface, &baudrate, sizeof (baudrate), C_SETBAUD);
+//	chip_send(compac, 0x86, 0x10, 0x0D, 0x00); // Baud 230400
+//	usb_transfer_data(compac, CP210X_TYPE_OUT, CP210X_REQUEST_BAUD, 0, info->interface, &baudrate, sizeof (baudrate), C_SETBAUD);
 
 	chip_send(compac, 0x84, 0x00, 0x04, 0x00); // Read reg  0x04
 	chip_send(compac, 0x84, 0x00, 0x00, 0x00); // get chain reg0x0
