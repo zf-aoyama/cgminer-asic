@@ -161,7 +161,7 @@ static int64_t compac_scanwork(struct thr_info *thr)
 	uint64_t hashes = 0;
 	uint32_t err = 0;
 	uint32_t hcn_max = 1.25 * info->hashrate * RAMP_MS / 1000;
-	uint32_t max_task_wait = bound(info->fullscan_ms * 0.80, 5, 1000);
+	uint32_t max_task_wait = bound(info->fullscan_ms * 0.40, 5, 1000);
 
 	if (compac->usbinfo.nodev || !info->chips)
 		return -1;
@@ -225,8 +225,8 @@ static int64_t compac_scanwork(struct thr_info *thr)
 				hashes = info->hashrate * RAMP_MS / 1000;
 			} else {
 				info->active = true;
-				//info->ramp_hcn = (0xffffffff / info->chips);
-				info->ramp_hcn = 0;
+				info->ramp_hcn = (0xffffffff / info->chips);
+				//info->ramp_hcn = 0;
 			}
 
 			init_task(info);

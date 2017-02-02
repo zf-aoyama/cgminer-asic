@@ -21,9 +21,9 @@ struct COMPAC_INFO {
 
 	float frequency;             // Chip Frequency
 
-	uint32_t scanhash_ms;		 // Avg time(ms) inside scanhash loop
-	uint32_t task_ms;			 // Avg time(ms) between task sent to device
-	uint32_t fullscan_ms;		 // Estimated time(ms) for full nonce range
+	uint32_t scanhash_ms;        // Avg time(ms) inside scanhash loop
+	uint32_t task_ms;            // Avg time(ms) between task sent to device
+	uint32_t fullscan_ms;        // Estimated time(ms) for full nonce range
 	uint64_t hashrate;           // Estimated hashrate = 55M x Chips x Frequency
 
 	uint64_t ramp_hcn;           // HCN high watermark at ramping
