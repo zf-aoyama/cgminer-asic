@@ -4208,7 +4208,7 @@ static void kill_mining(void)
 		if (thr && PTH(thr) != 0L)
 			pth = &thr->pth;
 		thr_info_cancel(thr);
-#ifndef __MINGW32__
+#if !defined __MINGW32__ || __WINPTHREADS_VERSION >= 0x00050000
 		if (pth && *pth)
 			pthread_join(*pth, NULL);
 #else
