@@ -17,6 +17,7 @@ static uint32_t compac_check_nonce(struct cgpu_info *compac)
 	}
 
 	info->nonces++;
+	info->nonceless = 0;
 
 	if (nonce == info->prev_nonce) {
 		applog(LOG_WARNING, "Dup Nonce : %08x on %s %d", nonce, compac->drv->name, compac->device_id);
@@ -34,6 +35,7 @@ static uint32_t compac_check_nonce(struct cgpu_info *compac)
 
 	if (submit_nonce(info->thr, work, nonce)) {
 		info->accepted++;
+		info->failing = false;
 	} else {
 		if (hwe != compac->hw_errors) {
 			cgtime(&info->last_hwerror);
@@ -176,70 +178,73 @@ static int64_t compac_scanwork(struct thr_info *thr)
 	info->scanhash_ms = (info->scanhash_ms * 9 + ms_tdiff(&now, &info->last_scanhash)) / 10;
 	cgtime(&info->last_scanhash);
 
-	if (info->update_work || (ms_tdiff(&now, &info->last_task) > max_task_wait)) {
-		if (ms_tdiff(&now, &info->last_nonce) > MAX_IDLE) {
-			if (info->failing) {
-				if (ms_tdiff(&now, &info->last_nonce) > (MAX_IDLE * 2)) {
-					applog(LOG_ERR, "%s %d: Device failed to respond to restart",
-						   compac->drv->name, compac->device_id);
-					return -1;
-				}
-			} else {
-				applog(LOG_WARNING, "%s %d: No valid hashes for over 30 seconds, attempting to reset",
+	if (info->nonceless > MAX_IDLE) {
+		if (info->failing) {
+			if (info->nonceless > (MAX_IDLE * 2)) {
+				applog(LOG_ERR, "%s %d: Device failed to respond to restart",
 					   compac->drv->name, compac->device_id);
-				usb_reset(compac);
-				info->failing = true;
-			}
-		} else {
-			info->job_id = (info->job_id + 1) % MAX_JOBS;
-
-			if (info->update_work) {
-				mutex_lock(&info->lock);
-				for (i = 0; i < MAX_JOBS; i++) {
-					if (info->work[i])
-						free_work(info->work[i]);
-					info->work[i] = NULL;
-				}
-				mutex_unlock(&info->lock);
-				info->update_work = 0;
-			}
-
-			if (info->work[info->job_id] && info->work[info->job_id]->drv_rolllimit == 0) {
-				free_work(info->work[info->job_id]);
-				info->work[info->job_id] = NULL;
-			}
-
-			if (!info->work[info->job_id]) {
-				info->work[info->job_id] = get_work(thr, thr->id);
-			} else {
-				info->work[info->job_id]->drv_rolllimit--;
-				roll_work(info->work[info->job_id]);
-			}
-
-			if (info->ramping < RAMP_CT) {
-				info->ramping++;
-				info->ramp_hcn += hcn_max / RAMP_CT;
-				info->ramp_hcn = bound(info->ramp_hcn, 0, 0xffffffff);
-
-				cgtime(&info->last_nonce);
-				hashes = info->hashrate * RAMP_MS / 1000;
-			} else {
-				info->active = true;
-				info->ramp_hcn = (0xffffffff / info->chips);
-				//info->ramp_hcn = 0;
-			}
-
-			init_task(info);
-
-			err = usb_write(compac, (char *)info->work_tx, TX_TASK_SIZE, &read_bytes, C_SENDWORK);
-			if (err != LIBUSB_SUCCESS || read_bytes != TX_TASK_SIZE) {
-				applog(LOG_WARNING,"%s %d: Write error", compac->drv->name, compac->device_id);
 				return -1;
 			}
-
-			info->task_ms = (info->task_ms * 9 + ms_tdiff(&now, &info->last_task)) / 10;
-			cgtime(&info->last_task);
+		} else {
+			applog(LOG_WARNING, "%s %d: No valid hashes recently, attempting to reset",
+				   compac->drv->name, compac->device_id);
+			usb_reset(compac);
+			info->failing = true;
+			return 0;
 		}
+	}
+
+	if (info->update_work || (ms_tdiff(&now, &info->last_task) > max_task_wait)) {
+
+		info->job_id = (info->job_id + 1) % MAX_JOBS;
+
+		if (info->update_work) {
+			mutex_lock(&info->lock);
+			for (i = 0; i < MAX_JOBS; i++) {
+				if (info->work[i])
+					free_work(info->work[i]);
+				info->work[i] = NULL;
+			}
+			mutex_unlock(&info->lock);
+			info->update_work = 0;
+		}
+
+		if (info->work[info->job_id] && info->work[info->job_id]->drv_rolllimit == 0) {
+			free_work(info->work[info->job_id]);
+			info->work[info->job_id] = NULL;
+		}
+
+		if (!info->work[info->job_id]) {
+			info->work[info->job_id] = get_work(thr, thr->id);
+		} else {
+			info->work[info->job_id]->drv_rolllimit--;
+			roll_work(info->work[info->job_id]);
+		}
+
+		if (info->ramping < RAMP_CT) {
+			info->ramping++;
+			info->ramp_hcn += hcn_max / RAMP_CT;
+			info->ramp_hcn = bound(info->ramp_hcn, 0, 0xffffffff);
+
+			cgtime(&info->last_nonce);
+			hashes = info->hashrate * RAMP_MS / 1000;
+		} else {
+			info->nonceless++;
+			info->active = true;
+			info->ramp_hcn = (0xffffffff / info->chips);
+			//info->ramp_hcn = 0;
+		}
+
+		init_task(info);
+
+		err = usb_write(compac, (char *)info->work_tx, TX_TASK_SIZE, &read_bytes, C_SENDWORK);
+		if (err != LIBUSB_SUCCESS || read_bytes != TX_TASK_SIZE) {
+			applog(LOG_WARNING,"%s %d: Write error", compac->drv->name, compac->device_id);
+			return -1;
+		}
+
+		info->task_ms = (info->task_ms * 9 + ms_tdiff(&now, &info->last_task)) / 10;
+		cgtime(&info->last_task);
 	}
 
 	cpu_yield = bound(max_task_wait / 20, 1, 100);

@@ -9,7 +9,7 @@
 #define RAMP_MS 25               // MS between ramp, total ramp time = RAMP_CT x RAMP_MS / 1000
 
 #define MAX_JOBS 0x1F            // Max BM1384 Job Id
-#define MAX_IDLE 30000           // MS wait before we consider device non functional.
+#define MAX_IDLE 60              // No nonces count before we consider device non functional.
 
 struct COMPAC_INFO {
 
@@ -35,6 +35,7 @@ struct COMPAC_INFO {
 
 	int accepted;                // Nonces accepted
 	int nonces;                  // Nonces found
+	int nonceless;               // Tasks sent.  Resets when nonce is found.
 	uint64_t hashes;             // Hashes completed
 	int interface;               // USB interface
 
