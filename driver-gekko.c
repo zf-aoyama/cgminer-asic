@@ -165,7 +165,12 @@ static int64_t compac_scanwork(struct thr_info *thr)
 	uint32_t hcn_max = 1.25 * info->hashrate * RAMP_MS / 1000;
 	uint32_t max_task_wait = bound(info->fullscan_ms * 0.40, 5, 1000);
 
-	if (compac->usbinfo.nodev || !info->chips)
+	if (!info->chips) {
+		usb_nodev(compac);
+		return -1;
+	}
+
+	if (compac->usbinfo.nodev)
 		return -1;
 
 	if (info->ramping < RAMP_CT)
@@ -183,6 +188,7 @@ static int64_t compac_scanwork(struct thr_info *thr)
 			if (info->nonceless > (MAX_IDLE * 2)) {
 				applog(LOG_ERR, "%s %d: Device failed to respond to restart",
 					   compac->drv->name, compac->device_id);
+				usb_nodev(compac);
 				return -1;
 			}
 		} else {
@@ -319,12 +325,12 @@ static void compac_set_frequency(struct cgpu_info *compac, float frequency)
 	r1 = 0x0785 - r;
 	r2 = 0x200 / pow(2, r);
 	r3 = 25 * pow(2, r);
-	
+
 	p1 = r1 + r2 * (info->frequency - r3) / 6.25;
 	p2 = p1 * 2 + (0x7f + r);
-	
+
 	pll = ((uint32_t)(info->frequency) % 25 == 0 ? p1 : p2);
-	
+
 	if (info->frequency < 100) {
 		pll = 0x0783 - 0x80 * (100 - info->frequency) / 6.25;
 	}
@@ -418,7 +424,7 @@ static bool compac_init(struct thr_info *thr)
 	}
 
 	compac_set_frequency(compac, frequency);
-				
+
 	return true;
 }
 
