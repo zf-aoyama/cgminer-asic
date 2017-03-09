@@ -5,11 +5,11 @@
 #define TX_TASK_SIZE 64          // BM1384 Work Task Request Size
 #define RX_RESP_SIZE  5          // BM1384 Response Size
 
-#define RAMP_CT 200              // Step counts to take when ramping
-#define RAMP_MS 25               // MS between ramp, total ramp time = RAMP_CT x RAMP_MS / 1000
+#define RAMP_CT 100              // Step counts to take when ramping
+#define RAMP_MS 50               // MS between ramp, total ramp time = RAMP_CT x RAMP_MS / 1000
 
 #define MAX_JOBS 0x1F            // Max BM1384 Job Id
-#define MAX_IDLE 60              // No nonces count before we consider device non functional.
+#define MAX_IDLE 15              // No nonces seconds before we consider device non functional.
 
 struct COMPAC_INFO {
 
@@ -20,6 +20,7 @@ struct COMPAC_INFO {
 	pthread_mutex_t lock;        // Mutex
 
 	float frequency;             // Chip Frequency
+	float frequency_req;         // Requested Frequency
 
 	uint32_t scanhash_ms;        // Avg time(ms) inside scanhash loop
 	uint32_t task_ms;            // Avg time(ms) between task sent to device
@@ -39,7 +40,8 @@ struct COMPAC_INFO {
 	uint64_t hashes;             // Hashes completed
 	int interface;               // USB interface
 
-	uint32_t difficulty;         // Used to reduce flashes per second
+	uint32_t ticket_mask;        // Used to reduce flashes per second
+	uint32_t difficulty;         // For computing hashrate
 	uint32_t chips;              // Stores number of chips found
 	uint32_t ramping;            // Ramping incrementer
 	uint32_t update_work;        // Notification of work update
