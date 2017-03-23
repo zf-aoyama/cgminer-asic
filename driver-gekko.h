@@ -5,8 +5,8 @@
 #define TX_TASK_SIZE 64          // BM1384 Work Task Request Size
 #define RX_RESP_SIZE  5          // BM1384 Response Size
 
-#define RAMP_CT 100              // Step counts to take when ramping
-#define RAMP_MS 50               // MS between ramp, total ramp time = RAMP_CT x RAMP_MS / 1000
+#define RAMP_CT 150              // Step counts to take when ramping
+#define RAMP_MS 33               // MS between ramp, total ramp time = RAMP_CT x RAMP_MS / 1000
 
 #define MAX_JOBS 0x1F            // Max BM1384 Job Id
 #define MAX_IDLE 15              // No nonces seconds before we consider device non functional.
