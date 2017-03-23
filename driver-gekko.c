@@ -346,14 +346,17 @@ static struct cgpu_info *compac_detect_one(struct libusb_device *dev, struct usb
 
 	compac_send(compac, 0x84, 0x00, 0x00, 0x00); // get chain reg0x0
 
-	if (!info->chips)
+	if (!info->chips) {
 		applog(LOG_WARNING,"Device serial %s not responding", compac->usbdev->serial_string);
-
-	if (info->chips && !add_cgpu(compac)) {
 		usb_uninit(compac);
 		free(info);
+		compac->device_data = NULL;
+		compac = usb_free_cgpu(compac);
 		return NULL;
 	}
+
+	if (!add_cgpu(compac))
+		quit(1, "Failed to add_cgpu in compac_detect_one");
 
 	update_usb_stats(compac);
 	return compac;
