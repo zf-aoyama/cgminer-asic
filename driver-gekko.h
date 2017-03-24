@@ -63,4 +63,3 @@ struct COMPAC_INFO {
 void stuff_int32(unsigned char *dst, uint32_t x);
 void stuff_reverse(unsigned char *dst, unsigned char *src, uint32_t len);
 uint64_t bound(uint64_t value, uint64_t lower_bound, uint64_t upper_bound);
-uint32_t crc5(unsigned char *ptr, uint32_t len);

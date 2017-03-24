@@ -1,5 +1,24 @@
 #include "driver-gekko.h"
 
+uint32_t bmcrc(unsigned char *ptr, uint32_t len)
+{
+	unsigned char c[5] = {1, 1, 1, 1, 1};
+	uint32_t i, c1, ptr_idx = 0;
+
+	for (i = 0; i < len; i++) {
+		c1 = c[1];
+		c[1] = c[0];
+		c[0] = c[4] ^ ((ptr[ptr_idx] & (0x80 >> (i % 8))) ? 1 : 0);
+		c[4] = c[3];
+		c[3] = c[2];
+		c[2] = c1 ^ c[0];
+
+		if (((i + 1) % 8) == 0)
+			ptr_idx++;
+	}
+	return (c[4] * 0x10) | (c[3] * 0x08) | (c[2] * 0x04) | (c[1] * 0x02) | (c[0] * 0x01);
+}
+
 static void compac_send(struct cgpu_info *compac, uint32_t b1, uint32_t b2, uint32_t b3, uint32_t b4)
 {
 	struct COMPAC_INFO *info = compac->device_data;
@@ -9,7 +28,7 @@ static void compac_send(struct cgpu_info *compac, uint32_t b1, uint32_t b2, uint
 	int read_bytes = 1;
 	int read_wait = 0;
 
-	req_tx[3] |= crc5(req_tx, 27);
+	req_tx[3] |= bmcrc(req_tx, 27);
 
 	if (req_tx[0] == 0x84 && req_tx[3] == 0x11)
 		info->chips = 0;
@@ -127,16 +146,20 @@ static void compac_update_work(struct cgpu_info *compac)
 	info->update_work = 1;
 }
 
-static void compac_flush_work(struct cgpu_info *compac)
+static void compac_flush_buffer(struct cgpu_info *compac)
 {
-	int read_bytes;
-	unsigned char resp[1];
-
-	compac_update_work(compac);
+	int read_bytes = 1;
+	unsigned char resp[32];
 
 	while (read_bytes) {
-		usb_read_once_timeout(compac, (char *)resp, 1, &read_bytes, 10, C_BF1_GETINFO);
+		usb_read_timeout(compac, (char *)resp, 32, &read_bytes, 10, C_REQUESTRESULTS);
 	}
+}
+
+static void compac_flush_work(struct cgpu_info *compac)
+{
+	compac_flush_buffer(compac);
+	compac_update_work(compac);
 }
 
 static void init_task(struct COMPAC_INFO *info)
@@ -294,6 +317,7 @@ static int64_t compac_scanwork(struct thr_info *thr)
 		err = usb_write(compac, (char *)info->work_tx, TX_TASK_SIZE, &read_bytes, C_SENDWORK);
 		if (err != LIBUSB_SUCCESS || read_bytes != TX_TASK_SIZE) {
 			applog(LOG_WARNING,"%s %d: Write error", compac->drv->name, compac->device_id);
+			usb_nodev(compac);
 			return -1;
 		}
 
@@ -329,6 +353,8 @@ static struct cgpu_info *compac_detect_one(struct libusb_device *dev, struct usb
 	info->ident = usb_ident(compac);
 
 	switch (info->ident) {
+		case IDENT_BSC:
+		case IDENT_BSD:
 		case IDENT_GSC:
 		case IDENT_GSD:
 			break;
@@ -343,6 +369,8 @@ static struct cgpu_info *compac_detect_one(struct libusb_device *dev, struct usb
 	usb_transfer_data(compac, CP210X_TYPE_OUT, CP210X_REQUEST_DATA, CP210X_VALUE_DATA, info->interface, NULL, 0, C_SETDATA);
 	usb_transfer_data(compac, CP210X_TYPE_OUT, CP210X_REQUEST_BAUD, 0, info->interface, &baudrate, sizeof (baudrate), C_SETBAUD);
 	usb_transfer_data(compac, CP210X_TYPE_OUT, CP210X_SET_LINE_CTL, bits, info->interface, NULL, 0, C_SETPARITY);
+
+	compac_flush_buffer(compac);
 
 	compac_send(compac, 0x84, 0x00, 0x00, 0x00); // get chain reg0x0
 
@@ -421,9 +449,11 @@ static bool compac_init(struct thr_info *thr)
 	frequency = 100 / (info->chips ? info->chips : 1);
 
 	switch (info->ident) {
+		case IDENT_BSC:
 		case IDENT_GSC:
 			info->frequency_req = opt_gekko_gsc_freq;
 			break;
+		case IDENT_BSD:
 		case IDENT_GSD:
 			info->frequency_req = opt_gekko_gsd_freq;
 			break;
@@ -464,7 +494,7 @@ static void compac_shutdown(struct thr_info *thr)
 {
 	struct cgpu_info *compac = thr->cgpu;
 	struct COMPAC_INFO *info = compac->device_data;
-	uint32_t baudrate = CP210X_DATA_BAUD;
+	//uint32_t baudrate = CP210X_DATA_BAUD;
 
 	compac_set_frequency(compac, 100);
 
@@ -473,25 +503,6 @@ static void compac_shutdown(struct thr_info *thr)
 
 	//compac_send(compac, 0x86, 0x10, 0x1a, 0x00); // Baud 115200
 	//usb_transfer_data(compac, CP210X_TYPE_OUT, CP210X_REQUEST_BAUD, 0, info->interface, &baudrate, sizeof (baudrate), C_SETBAUD);
-}
-
-uint32_t crc5(unsigned char *ptr, uint32_t len)
-{
-	unsigned char c[5] = {1, 1, 1, 1, 1};
-	uint32_t i, c1, ptr_idx = 0;
-
-	for (i = 0; i < len; i++) {
-		c1 = c[1];
-		c[1] = c[0];
-		c[0] = c[4] ^ ((ptr[ptr_idx] & (0x80 >> (i % 8))) ? 1 : 0);
-		c[4] = c[3];
-		c[3] = c[2];
-		c[2] = c1 ^ c[0];
-
-		if (((i + 1) % 8) == 0)
-			ptr_idx++;
-	}
-	return (c[4] * 0x10) | (c[3] * 0x08) | (c[2] * 0x04) | (c[1] * 0x02) | (c[0] * 0x01);
 }
 
 uint64_t bound(uint64_t value, uint64_t lower_bound, uint64_t upper_bound)

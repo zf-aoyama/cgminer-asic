@@ -943,13 +943,25 @@ static struct usb_find_devices find_dev[] = {
 #endif
 #ifdef USE_GEKKO
 	{
-		.drv = DRIVER_icarus,
+		.drv = DRIVER_gekko,
 		.name = "BSC",
 		.ident = IDENT_BSC,
 		.idVendor = 0x10c4,
 		.idProduct = 0xea60,
 		.iManufacturer = "bitshopperde",
 		.iProduct = "Compac BM1384 Bitcoin Miner",
+		.config = 1,
+		.timeout = COMPAC_TIMEOUT_MS,
+		.latency = LATENCY_UNUSED,
+		INTINFO(gek_ints) },
+	{
+		.drv = DRIVER_gekko,
+		.name = "BSD",
+		.ident = IDENT_BSD,
+		.idVendor = 0x10c4,
+		.idProduct = 0xea60,
+		.iManufacturer = "bitshopperde",
+		.iProduct = "2Pac BM1384 Bitcoin Miner",
 		.config = 1,
 		.timeout = COMPAC_TIMEOUT_MS,
 		.latency = LATENCY_UNUSED,
