@@ -52,12 +52,29 @@ static void compac_send(struct cgpu_info *compac, uint32_t b1, uint32_t b2, uint
 	}
 }
 
-static void compac_set_frequency(struct cgpu_info *compac, float frequency)
+static void compac_send_chain_inactive(struct cgpu_info *compac)
+{
+	struct COMPAC_INFO *info = compac->device_data;
+	int i, interval;
+	applog(LOG_INFO,"%s %d: sending chain inactive for %d chips", compac->drv->name, compac->device_id, info->chips);
+	compac_send(compac, 0x85, 0x00, 0x00, 0x00); // chain inactive
+	for (i = 0; i < info->chips; i++) {
+		interval = (0x100 / info->chips) * i;
+		compac_send(compac, 0x01, interval, 0x00, 0x00);
+	}
+	cgtime(&info->last_chain_inactive);
+}
+
+static void compac_set_frequency(struct cgpu_info *compac, float frequency, bool inactive)
 {
 	struct COMPAC_INFO *info = compac->device_data;
 
 	uint32_t r, r1, r2, r3, p1, p2, pll;
+	int i, interval;
 	unsigned char f[2];
+
+	if (frequency > info->frequency_requested)
+		frequency = info->frequency_requested;
 
 	frequency = bound(frequency, 6, 500);
 	frequency = ceil(100 * (frequency) / 625.0) * 6.25;
@@ -91,8 +108,14 @@ static void compac_set_frequency(struct cgpu_info *compac, float frequency)
 	f[1] = (pll >> 8) & 0xff;
 
 	applog(LOG_INFO,"%s %d: set frequency: %.2f [%02x %02x]",  compac->drv->name, compac->device_id, info->frequency, f[1], f[0]);
+	applog(LOG_INFO,"%s %d: Ticket mask set to %d", compac->drv->name, compac->device_id, info->ticket_mask);
 
 	compac_send(compac, 0x82, f[1], f[0], 0x00); // Set asic frequency
+
+	cgtime(&info->last_freq_set);
+
+	if (inactive)
+		compac_send_chain_inactive(compac);
 
 }
 
@@ -104,6 +127,7 @@ static uint64_t compac_check_nonce(struct cgpu_info *compac)
 	uint64_t hashes = 0;
 	uint32_t hwe = compac->hw_errors;
 	struct timeval now;
+	int i, interval;
 
 	uint32_t job_id = info->work_rx[4] ^ 0x80;
 	struct work *work = info->work[job_id];
@@ -112,10 +136,13 @@ static uint64_t compac_check_nonce(struct cgpu_info *compac)
 		return hashes;
 	}
 
+	cgtime(&now);
+
 	info->nonces++;
 	info->nonceless = 0;
 	if (nonce == info->prev_nonce) {
 		applog(LOG_INFO, "Dup Nonce : %08x on %s %d", nonce, compac->drv->name, compac->device_id);
+		info->dups++;
 		return hashes;
 	}
 
@@ -125,7 +152,6 @@ static uint64_t compac_check_nonce(struct cgpu_info *compac)
 
 	applog(LOG_INFO, "Device reported nonce: %08x @ %02x", nonce, info->work_rx[4]);
 
-	cgtime(&now);
 	cgtime(&info->last_nonce);
 
 	work->device_diff = info->difficulty;
@@ -191,7 +217,7 @@ static void *compac_listen(void *object)
 	uint32_t err = 0;
 	int read_bytes;
 
-	while (info->shutdown == false)
+	while (compac->shutdown == false)
 	{
 		if (compac->usbinfo.nodev)
 			return false;
@@ -227,6 +253,7 @@ static int64_t compac_scanwork(struct thr_info *thr)
 
 	int read_bytes = 1;
 	int i, cpu_yield;
+	float frequency;
 	uint64_t hashes = 0;
 	uint32_t err = 0;
 	uint32_t hcn_max = info->hashrate * RAMP_MS / 1000;
@@ -295,20 +322,25 @@ static int64_t compac_scanwork(struct thr_info *thr)
 			info->ramp_hcn = bound(info->ramp_hcn, 0, 0xffffffff);
 
 			cgtime(&info->last_nonce);
-			//if ((info->frequency_req * info->ramping / RAMP_CT) > info->frequency) {
-			//	compac_set_frequency(compac, info->frequency_req * info->ramping / RAMP_CT);
-			//}
 		} else {
-			if (!info->active) {
-				applog(LOG_WARNING,"%s %d: Ticket mask set to %d", compac->drv->name, compac->device_id, info->ticket_mask);
-			}
-
 			info->nonceless++;
 			info->active = true;
 			info->ramp_hcn = (0xffffffff / info->chips);
 		}
 
 		init_task(info);
+
+		frequency = info->frequency;
+		if (info->frequency != info->frequency_requested && ms_tdiff(&now, &info->last_freq_set) > 30 * 1000) {
+			frequency += info->frequency_start;
+		}
+		if (frequency != info->frequency)
+			compac_set_frequency(compac, frequency, true);
+
+		if (info->dups * 2 >= info->chips && ms_tdiff(&now, &info->last_chain_inactive) > 3000) {
+			info->dups = 0;
+			compac_send_chain_inactive(compac);
+		}
 
 		err = usb_write(compac, (char *)info->work_tx, TX_TASK_SIZE, &read_bytes, C_SENDWORK);
 		if (err != LIBUSB_SUCCESS || read_bytes != TX_TASK_SIZE) {
@@ -323,6 +355,10 @@ static int64_t compac_scanwork(struct thr_info *thr)
 
 	cpu_yield = bound(max_task_wait / 20, 1, 100);
 	cgsleep_ms(cpu_yield);
+
+	if (compac->shutdown)
+		compac_set_frequency(compac, info->frequency_start, false);
+
 	return hashes;
 }
 
@@ -369,7 +405,6 @@ static struct cgpu_info *compac_detect_one(struct libusb_device *dev, struct usb
 	compac_flush_buffer(compac);
 
 	compac_send(compac, 0x84, 0x00, 0x04, 0x00); // Read reg  0x04
-
 	compac_send(compac, 0x84, 0x00, 0x00, 0x00); // get chain reg0x0
 
 	if (!info->chips) {
@@ -407,7 +442,6 @@ static bool compac_prepare(struct thr_info *thr)
 	info->ramp_hcn = 0;
 	info->hashes = 0;
 	info->active = false;
-	info->shutdown = false;
 
 	cgtime(&info->start_time);
 	cgtime(&info->last_scanhash);
@@ -434,40 +468,41 @@ static bool compac_init(struct thr_info *thr)
 {
 	struct cgpu_info *compac = thr->cgpu;
 	struct COMPAC_INFO *info = compac->device_data;
+
 //	uint32_t baudrate = CP210X_DATA_BAUD * 2;  // Baud 230400
-	float frequency = 100;
-	int i, interval;
+	uint32_t chips = info->chips;
 
 //	compac_send(compac, 0x86, 0x10, 0x0D, 0x00); // Baud 230400
 //	usb_transfer_data(compac, CP210X_TYPE_OUT, CP210X_REQUEST_BAUD, 0, info->interface, &baudrate, sizeof (baudrate), C_SETBAUD);
 
+	compac_send(compac, 0x84, 0x00, 0x00, 0x00); // get chain reg0x0
+	while (chips != info->chips) {
+		chips = info->chips;
+		compac_send(compac, 0x84, 0x00, 0x00, 0x00); // get chain reg0x0
+	}
+
 	applog(LOG_WARNING,"Found %d chip(s) on %s %d", info->chips, compac->drv->name, compac->device_id);
 
-	frequency = 100 / (info->chips ? info->chips : 1);
+	info->frequency_start = 150 / (info->chips ? info->chips : 1);
+	info->frequency_start = 75;
 
 	switch (info->ident) {
 		case IDENT_BSC:
 		case IDENT_GSC:
-			info->frequency_req = opt_gekko_gsc_freq;
+			info->frequency_requested = opt_gekko_gsc_freq;
 			break;
 		case IDENT_BSD:
 		case IDENT_GSD:
-			info->frequency_req = opt_gekko_gsd_freq;
+			info->frequency_requested = opt_gekko_gsd_freq;
 			break;
 		default:
-			info->frequency_req = 100;
+			info->frequency_requested = 150;
 			break;
 	}
 
-	frequency = (info->frequency_req < frequency) ? info->frequency_req : frequency;
+	info->frequency_start = (info->frequency_requested < info->frequency_start) ? info->frequency_requested : info->frequency_start;
 
-	compac_set_frequency(compac, info->frequency_req);
-
-	compac_send(compac, 0x85, 0x00, 0x00, 0x00); // chain inactive
-	for (i = 0; i < info->chips; i++) {
-		interval = (0x100 / info->chips) * i;
-		compac_send(compac, 0x01, interval, 0x00, 0x00);
-	}
+	compac_set_frequency(compac, info->frequency_start, true);
 
 	return true;
 }
@@ -478,7 +513,7 @@ static void compac_statline(char *buf, size_t bufsiz, struct cgpu_info *compac)
 	if (opt_log_output) {
 		tailsprintf(buf, bufsiz, "COMPAC-%i %.2fMHz (%d/%d/%d/%d)", info->chips, info->frequency, info->scanhash_ms, info->task_ms, info->fullscan_ms, compac->hw_errors);
 	} else {
-		tailsprintf(buf, bufsiz, "COMPAC-%i %.2fMHz HW:%d", info->chips, info->frequency, compac->hw_errors);
+		tailsprintf(buf, bufsiz, "COMPAC-%i %.2fMHz HW:%d", info->chips, info->frequency_requested, compac->hw_errors);
 	}
 }
 
@@ -499,10 +534,7 @@ static void compac_shutdown(struct thr_info *thr)
 	struct COMPAC_INFO *info = compac->device_data;
 	//uint32_t baudrate = CP210X_DATA_BAUD;
 
-	//compac_set_frequency(compac, 100);
-
-	info->shutdown = true;
-	compac_flush_work(compac);
+	compac_set_frequency(compac, info->frequency_start, false);
 
 	//compac_send(compac, 0x86, 0x10, 0x1a, 0x00); // Baud 115200
 	//usb_transfer_data(compac, CP210X_TYPE_OUT, CP210X_REQUEST_BAUD, 0, info->interface, &baudrate, sizeof (baudrate), C_SETBAUD);
