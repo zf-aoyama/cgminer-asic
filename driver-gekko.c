@@ -70,7 +70,6 @@ static void compac_set_frequency(struct cgpu_info *compac, float frequency, bool
 	struct COMPAC_INFO *info = compac->device_data;
 
 	uint32_t r, r1, r2, r3, p1, p2, pll;
-	int i, interval;
 	unsigned char f[2];
 
 	if (frequency > info->frequency_requested)
@@ -127,7 +126,6 @@ static uint64_t compac_check_nonce(struct cgpu_info *compac)
 	uint64_t hashes = 0;
 	uint32_t hwe = compac->hw_errors;
 	struct timeval now;
-	int i, interval;
 
 	uint32_t job_id = info->work_rx[4] ^ 0x80;
 	struct work *work = info->work[job_id];
