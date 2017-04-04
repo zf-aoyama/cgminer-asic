@@ -144,7 +144,7 @@ static uint64_t compac_check_nonce(struct cgpu_info *compac)
 		return hashes;
 	}
 
-	hashes = info->difficulty * 0xffffffffull;
+	hashes = info->difficulty * 0xffffffffull * info->frequency_requested / info->frequency;
 
 	info->prev_nonce = nonce;
 
@@ -329,8 +329,8 @@ static int64_t compac_scanwork(struct thr_info *thr)
 		init_task(info);
 
 		frequency = info->frequency;
-		if (info->frequency != info->frequency_requested && ms_tdiff(&now, &info->last_freq_set) > 30 * 1000) {
-			frequency += info->frequency_start;
+		if (info->frequency != info->frequency_requested && ms_tdiff(&now, &info->last_freq_set) > 25 * 1000) {
+			frequency += 25;
 		}
 		if (frequency != info->frequency)
 			compac_set_frequency(compac, frequency, true);
@@ -482,7 +482,7 @@ static bool compac_init(struct thr_info *thr)
 	applog(LOG_WARNING,"Found %d chip(s) on %s %d", info->chips, compac->drv->name, compac->device_id);
 
 	info->frequency_start = 150 / (info->chips ? info->chips : 1);
-	info->frequency_start = 75;
+	info->frequency_start = 50;
 
 	switch (info->ident) {
 		case IDENT_BSC:
