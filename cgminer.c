@@ -274,6 +274,7 @@ int opt_bet_clk = 0;
 #ifdef USE_GEKKO
 float opt_gekko_gsc_freq = 150;
 float opt_gekko_gsd_freq = 100;
+float opt_gekko_gse_freq = 200;
 #endif
 #ifdef USE_HASHRATIO
 #include "driver-hashratio.h"
@@ -1661,12 +1662,15 @@ static struct opt_table opt_config_table[] = {
                      "Set Block Erupter clock"),
 #endif
 #ifdef USE_GEKKO
+	OPT_WITH_ARG("--gekko-terminus-freq",
+		     set_float_0_to_500, opt_show_floatval, &opt_gekko_gse_freq,
+		     "Set GekkoScience Terminus BM1384 frequency in MHz, range 6.25-500"),
 	OPT_WITH_ARG("--gekko-2pac-freq",
 		     set_float_0_to_500, opt_show_floatval, &opt_gekko_gsd_freq,
-		     "Set GekkoScience 2Pac frequency in MHz, range 6.25-500"),
+		     "Set GekkoScience 2Pac BM1384 frequency in MHz, range 6.25-500"),
 	OPT_WITH_ARG("--gekko-compac-freq",
 		     set_float_0_to_500, opt_show_floatval, &opt_gekko_gsc_freq,
-		     "Set GekkoScience Compac frequency in MHz, range 6.25-500"),
+		     "Set GekkoScience Compac BM1384 frequency in MHz, range 6.25-500"),
 #endif
 #ifdef HAVE_LIBCURL
 	OPT_WITH_ARG("--btc-address",

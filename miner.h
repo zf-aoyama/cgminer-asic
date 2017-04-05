@@ -1023,6 +1023,7 @@ extern char *opt_bitburner_fury_options;
 #ifdef USE_GEKKO
 extern float opt_gekko_gsc_freq;
 extern float opt_gekko_gsd_freq;
+extern float opt_gekko_gse_freq;
 #endif
 #ifdef USE_KLONDIKE
 extern char *opt_klondike_options;

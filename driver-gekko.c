@@ -329,7 +329,7 @@ static int64_t compac_scanwork(struct thr_info *thr)
 		init_task(info);
 
 		frequency = info->frequency;
-		if (info->frequency != info->frequency_requested && ms_tdiff(&now, &info->last_freq_set) > 25 * 1000) {
+		if (info->frequency != info->frequency_requested && ms_tdiff(&now, &info->last_freq_set) > 9 * 1000) {
 			frequency += 25;
 		}
 		if (frequency != info->frequency)
@@ -385,8 +385,10 @@ static struct cgpu_info *compac_detect_one(struct libusb_device *dev, struct usb
 	switch (info->ident) {
 		case IDENT_BSC:
 		case IDENT_BSD:
+		case IDENT_BSE:
 		case IDENT_GSC:
 		case IDENT_GSD:
+		case IDENT_GSE:
 			break;
 		default:
 			quit(1, "%s compac_detect_one() invalid %s ident=%d",
@@ -481,20 +483,25 @@ static bool compac_init(struct thr_info *thr)
 
 	applog(LOG_WARNING,"Found %d chip(s) on %s %d", info->chips, compac->drv->name, compac->device_id);
 
-	info->frequency_start = 150 / (info->chips ? info->chips : 1);
-	info->frequency_start = 50;
-
 	switch (info->ident) {
 		case IDENT_BSC:
 		case IDENT_GSC:
 			info->frequency_requested = opt_gekko_gsc_freq;
+			info->frequency_start = opt_gekko_gsc_freq;
 			break;
 		case IDENT_BSD:
 		case IDENT_GSD:
 			info->frequency_requested = opt_gekko_gsd_freq;
+			info->frequency_start = opt_gekko_gsd_freq;
+			break;
+		case IDENT_BSE:
+		case IDENT_GSE:
+			info->frequency_requested = opt_gekko_gse_freq;
+			info->frequency_start = BASE_FREQ;
 			break;
 		default:
-			info->frequency_requested = 150;
+			info->frequency_requested = BASE_FREQ;
+			info->frequency_start = BASE_FREQ;
 			break;
 	}
 
@@ -511,7 +518,7 @@ static void compac_statline(char *buf, size_t bufsiz, struct cgpu_info *compac)
 	if (opt_log_output) {
 		tailsprintf(buf, bufsiz, "COMPAC-%i %.2fMHz (%d/%d/%d/%d)", info->chips, info->frequency, info->scanhash_ms, info->task_ms, info->fullscan_ms, compac->hw_errors);
 	} else {
-		tailsprintf(buf, bufsiz, "COMPAC-%i %.2fMHz HW:%d", info->chips, info->frequency_requested, compac->hw_errors);
+		tailsprintf(buf, bufsiz, "COMPAC-%i %.2fMHz HW:%d", info->chips, info->frequency, compac->hw_errors);
 	}
 }
 

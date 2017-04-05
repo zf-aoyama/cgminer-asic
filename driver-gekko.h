@@ -11,6 +11,8 @@
 #define MAX_JOBS 0x1F            // Max BM1384 Job Id
 #define MAX_IDLE 15              // No nonces seconds before we consider device non functional.
 
+#define BASE_FREQ 50             // Reference point frequency
+
 struct COMPAC_INFO {
 
 	enum sub_ident ident;        // Miner identity
