@@ -447,6 +447,7 @@ static bool compac_prepare(struct thr_info *thr)
 	info->ramp_hcn = 0;
 	info->hashes = 0;
 	info->active = false;
+	info->frequency = 1;
 
 	cgtime(&info->start_time);
 	cgtime(&info->last_scanhash);
@@ -511,7 +512,6 @@ static bool compac_init(struct thr_info *thr)
 	}
 
 	info->frequency_start = (info->frequency_requested < info->frequency_start) ? info->frequency_requested : info->frequency_start;
-	info->frequency = info->frequency_start;
 
 	compac_set_frequency(compac, info->frequency_start, true);
 
