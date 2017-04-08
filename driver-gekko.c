@@ -78,7 +78,7 @@ static void compac_set_frequency(struct cgpu_info *compac, float frequency, bool
 	frequency = bound(frequency, 6, 500);
 	frequency = ceil(100 * (frequency) / 625.0) * 6.25;
 
-	if (info->frequency == frequency)
+	if (info->frequency == frequency || !info->chips)
 		return;
 
 	info->frequency = frequency;
@@ -259,6 +259,11 @@ static int64_t compac_scanwork(struct thr_info *thr)
 
 	if (compac->usbinfo.nodev)
 		return -1;
+
+	if (!info->chips) {
+		usb_nodev(compac);
+		return -1;
+	}
 
 	if (info->ramping < RAMP_CT)
 		max_task_wait = RAMP_MS;
@@ -506,6 +511,7 @@ static bool compac_init(struct thr_info *thr)
 	}
 
 	info->frequency_start = (info->frequency_requested < info->frequency_start) ? info->frequency_requested : info->frequency_start;
+	info->frequency = info->frequency_start;
 
 	compac_set_frequency(compac, info->frequency_start, true);
 
