@@ -407,13 +407,10 @@ static struct cgpu_info *compac_detect_one(struct libusb_device *dev, struct usb
 	usb_transfer_data(compac, CP210X_TYPE_OUT, CP210X_REQUEST_BAUD, 0, info->interface, &baudrate, sizeof (baudrate), C_SETBAUD);
 	usb_transfer_data(compac, CP210X_TYPE_OUT, CP210X_SET_LINE_CTL, bits, info->interface, NULL, 0, C_SETPARITY);
 
-	compac_flush_buffer(compac);
-
-	compac_send(compac, 0x84, 0x00, 0x04, 0x00); // Read reg  0x04
 	compac_send(compac, 0x84, 0x00, 0x00, 0x00); // get chain reg0x0
 
 	if (!info->chips) {
-		applog(LOG_WARNING,"Device serial %s not responding", compac->usbdev->serial_string);
+		applog(LOG_INFO,"Device serial %s not responding", compac->usbdev->serial_string);
 		usb_uninit(compac);
 		free(info);
 		compac->device_data = NULL;
