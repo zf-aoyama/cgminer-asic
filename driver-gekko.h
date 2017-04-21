@@ -9,7 +9,7 @@
 #define RAMP_MS 33               // MS between ramp, total ramp time = RAMP_CT x RAMP_MS / 1000
 
 #define MAX_JOBS 0x1F            // Max BM1384 Job Id
-#define MAX_IDLE 15              // No nonces seconds before we consider device non functional.
+#define MAX_IDLE 60              // No nonces seconds before we consider device non functional.
 
 #define BASE_FREQ 50             // Reference point frequency
 
@@ -33,7 +33,8 @@ struct COMPAC_INFO {
 	uint64_t ramp_hcn;           // HCN high watermark at ramping
 	uint32_t prev_nonce;         // Last nonce found
 
-	bool failing;                // Flag failing sticks
+	int failing;                 // Flag failing sticks
+	int write_err;               // Consecutive usb write errors
 	bool active;                 // Done ramping, send live work and get nonces
 
 	int accepted;                // Nonces accepted

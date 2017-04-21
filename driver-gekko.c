@@ -280,7 +280,8 @@ static int64_t compac_scanwork(struct thr_info *thr)
 			if (info->nonceless > (2 * MAX_IDLE * 1000 / max_task_wait)) {
 				applog(LOG_ERR, "%s %d: Device failed to respond to restart",
 					   compac->drv->name, compac->device_id);
-				usb_nodev(compac);
+				if (info->ident != IDENT_BSC && info->ident != IDENT_GSC)
+					usb_nodev(compac);
 				return -1;
 			}
 		} else {
@@ -347,9 +348,10 @@ static int64_t compac_scanwork(struct thr_info *thr)
 
 		err = usb_write(compac, (char *)info->work_tx, TX_TASK_SIZE, &read_bytes, C_SENDWORK);
 		if (err != LIBUSB_SUCCESS || read_bytes != TX_TASK_SIZE) {
-			applog(LOG_WARNING,"%s %d: Write error", compac->drv->name, compac->device_id);
-			usb_nodev(compac);
-			return -1;
+			applog(LOG_INFO,"%s %d: Write error", compac->drv->name, compac->device_id);
+			info->write_err++;
+		} else {
+			info->write_err = 0;
 		}
 
 		info->task_ms = (info->task_ms * 9 + ms_tdiff(&now, &info->last_task)) / 10;
@@ -445,6 +447,7 @@ static bool compac_prepare(struct thr_info *thr)
 	info->hashes = 0;
 	info->active = false;
 	info->frequency = 1;
+	info->write_err = 0;
 
 	cgtime(&info->start_time);
 	cgtime(&info->last_scanhash);
