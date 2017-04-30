@@ -34,7 +34,6 @@ struct COMPAC_INFO {
 	uint32_t prev_nonce;         // Last nonce found
 
 	int failing;                 // Flag failing sticks
-	int write_err;               // Consecutive usb write errors
 	bool active;                 // Done ramping, send live work and get nonces
 
 	int accepted;                // Nonces accepted
