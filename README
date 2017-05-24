@@ -1008,6 +1008,29 @@ used to find it in hex.
 
 ---
 
+You can use your miner with last extranonce support for nicehash by adding #xnsub at the address end, like this:
+
+./cgminer -o stratum+tcp://scrypt.eu.nicehash.com:3333/#xnsub -u my_btc_address -p x --gekko-2pac-freq 150
+
+or, in your cgminer.conf file:
+
+```json
+{
+"pools" : [
+    	{
+		"url" : "stratum+tcp://stratum.solo.nicehash.com:3334/#xnsub",
+		"user" : "17EWiYuSD4RZoCzQ6YS2CPqxi6NQPDthxk.b",
+		"pass" : "thanks"
+	}
+],
+
+"kernel-path" : "/usr/local/bin",
+"gekko-2pac-freq" : "150"
+}
+```
+
+---
+
 RPC API
 
 For RPC API details see the API-README file
