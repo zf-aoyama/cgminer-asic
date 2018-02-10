@@ -118,6 +118,10 @@ char *curly = ":D";
 #include "driver-cointerra.h"
 #endif
 
+#ifdef USE_GEKKO
+#include "driver-gekko.h"
+#endif
+
 #ifdef USE_HASHFAST
 #include "driver-hashfast.h"
 #endif
@@ -1203,7 +1207,6 @@ static void load_temp_cutoffs()
 	}
 }
 
-#ifdef USE_GEKKO
 static char *set_float_0_to_500(const char *arg, float *i)
 {
 	char *err = opt_set_floatval(arg, i);
@@ -1216,7 +1219,6 @@ static char *set_float_0_to_500(const char *arg, float *i)
 
 	return NULL;
 }
-#endif
 
 static char *set_float_125_to_500(const char *arg, float *i)
 {
@@ -2205,6 +2207,9 @@ static char *opt_verusage_and_exit(const char *extra)
 #endif
 #ifdef USE_DRILLBIT
                 "drillbit "
+#endif
+#ifdef USE_GEKKO
+		"gekko "
 #endif
 #ifdef USE_HASHFAST
 		"hashfast "
@@ -5474,9 +5479,9 @@ void write_config(FILE *fcfg)
 			}
 
 			if (opt->type & OPT_HASARG &&
-			    ((void *)opt->cb_arg == (void *)set_float_125_to_500 ||
-			     (void *)opt->cb_arg == (void *)set_float_100_to_250 ||
-			     (void *)opt->cb_arg == (void *)set_float_100_to_500)) {
+			    ((void *)opt->cb_arg == (void *)set_float_0_to_500 ||
+			     (void *)opt->cb_arg == (void *)set_float_125_to_500 ||
+			     (void *)opt->cb_arg == (void *)set_float_100_to_250)) {
 				fprintf(fcfg, ",\n\"%s\" : \"%.1f\"", p+2, *(float *)opt->u.arg);
 				continue;
 			}
