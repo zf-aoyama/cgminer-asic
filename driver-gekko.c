@@ -682,7 +682,7 @@ static void compac_statline(char *buf, size_t bufsiz, struct cgpu_info *compac)
 	if (info->chips == 0) {
 		return;
 	}
-	if (1 || opt_log_output) {
+	if (opt_log_output) {
 		tailsprintf(buf, bufsiz, "BM1384:%i %.2fMHz (%d/%d/%d/%d)", info->chips, info->frequency, info->scanhash_ms, info->task_ms, info->fullscan_ms, compac->hw_errors);
 	} else {
 		tailsprintf(buf, bufsiz, "BM1384:%i %.2fMHz HW:%d", info->chips, info->frequency_requested, compac->hw_errors);
