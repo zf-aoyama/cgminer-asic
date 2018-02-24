@@ -46,7 +46,6 @@ struct COMPAC_INFO {
 	int accepted;                // Nonces accepted
 	int dups;                    // Duplicates found
 	int interface;               // USB interface
-	int itr_ping;                // Ping Iterator
 	int nonceless;               // Tasks sent.  Resets when nonce is found.
 	int nonces;                  // Nonces found
 	int zero_check;              // Received nonces from zero work
@@ -70,6 +69,7 @@ struct COMPAC_INFO {
 	struct timeval last_task;               // Last time work was sent
 	struct timeval last_nonce;              // Last time nonce was found
 	struct timeval last_hwerror;            // Last time hw error was detected
+	struct timeval last_frequency_adjust;   // Last time of frequency adjust
 	struct timeval last_frequency_ping;     // Last time of frequency poll
 	struct timeval last_frequency_report;   // Last change of frequency report
 	struct timeval last_chain_inactive;     // Last sent chain inactive
