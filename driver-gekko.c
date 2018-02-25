@@ -161,7 +161,7 @@ static uint64_t compac_check_nonce(struct cgpu_info *compac)
 	info->nonces++;
 	info->nonceless = 0;
 	if (nonce == info->prev_nonce) {
-		applog(LOG_WARNING, "%s %d: Duplicate Nonce : %08x @ %02x [%02x %02x %02x %02x %02x %02x %02x]", compac->drv->name, compac->device_id, nonce, job_id,
+		applog(LOG_INFO, "%s %d: Duplicate Nonce : %08x @ %02x [%02x %02x %02x %02x %02x %02x %02x]", compac->drv->name, compac->device_id, nonce, job_id,
 			info->rx[0], info->rx[1], info->rx[2], info->rx[3], info->rx[4], info->rx[5], info->rx[6]);
 		info->dups++;
 		if (info->dups == 1) {
@@ -172,7 +172,7 @@ static uint64_t compac_check_nonce(struct cgpu_info *compac)
 		info->dups = 0;
 	}
 
-	hashes = info->difficulty * 0xffffffffull; 
+	hashes = info->difficulty * 0xffffffffull;
 	info->prev_nonce = nonce;
 	work->device_diff = info->difficulty;
 
@@ -395,8 +395,8 @@ static int64_t compac_scanwork(struct thr_info *thr)
 					cgtime(&info->last_frequency_ping);
 				}
 
-				if (info->accepted > 10 && ms_tdiff(&now, &info->last_frequency_ping) > 100 && 
-					ms_tdiff(&info->last_nonce, &info->last_frequency_adjust) > 0 && 
+				if (info->accepted > 10 && ms_tdiff(&now, &info->last_frequency_ping) > 100 &&
+					ms_tdiff(&info->last_nonce, &info->last_frequency_adjust) > 0 &&
 					ms_tdiff(&now, &info->last_frequency_adjust) >= bound(opt_gekko_step_delay, 1, 600) * 1000) {
 					if (info->frequency != info->frequency_requested) {
 						float new_frequency;
@@ -465,14 +465,20 @@ static int64_t compac_scanwork(struct thr_info *thr)
 				dumpbuffer(compac, LOG_DEBUG, "TASK", info->task, info->task_len);
 
 				err = usb_write(compac, (char *)info->task, info->task_len, &read_bytes, C_SENDWORK);
-				if (err != LIBUSB_SUCCESS || read_bytes != info->task_len) {
-					applog(LOG_INFO,"%s %d: Write error", compac->drv->name, compac->device_id);
+				if (err != LIBUSB_SUCCESS) {
+					applog(LOG_WARNING,"%s %d: usb failure (%d)", compac->drv->name, compac->device_id, err);
 					return -1;
+				}
+				if (read_bytes != info->task_len) {
+					if (ms_tdiff(&now, &info->last_write_error) > (5 * 1000)) {
+						applog(LOG_WARNING,"%s %d: usb write error [%d:%d]", compac->drv->name, compac->device_id, read_bytes, info->task_len);
+						cgtime(&info->last_write_error);
+					}
 				}
 				info->task_ms = (info->task_ms * 9 + ms_tdiff(&now, &info->last_task)) / 10;
 				cgtime(&info->last_task);
 				return hashes;
-			} 
+			}
 			
 			cgsleep_ms(sleep_ms);
 			break;
@@ -635,6 +641,7 @@ static bool compac_init(struct thr_info *thr)
 	info->mining_state = MINER_INIT;
 	info->prev_nonce = 0;
 
+	cgtime(&info->last_write_error);
 	cgtime(&info->last_frequency_adjust);
 	cgtime(&info->last_frequency_ping);
 	cgtime(&info->last_scanhash);

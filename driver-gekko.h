@@ -73,6 +73,7 @@ struct COMPAC_INFO {
 	struct timeval last_frequency_ping;     // Last time of frequency poll
 	struct timeval last_frequency_report;   // Last change of frequency report
 	struct timeval last_chain_inactive;     // Last sent chain inactive
+	struct timeval last_write_error;        // Last usb write error message
 
 	unsigned char task[64];                 // Task transmit buffer
 	unsigned char cmd[32];                  // Command transmit buffer
