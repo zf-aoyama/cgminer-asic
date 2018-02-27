@@ -577,20 +577,6 @@ static void compac_detect(bool __maybe_unused hotplug)
 	usb_detect(&gekko_drv, compac_detect_one);
 }
 
-static void *compac_unplug(void *object)
-{
-	struct cgpu_info *compac = (struct cgpu_info *)object;
-	struct COMPAC_INFO *info = compac->device_data;
-	int err = 0;
-	applog(LOG_INFO, "%s-%i: waiting for unplug", compac->drv->name, compac->device_id);
-	while (!err) {
-		cgsleep_ms(1000);
-		err = usb_transfer_data(compac, CP210X_TYPE_OUT, CP210X_REQUEST_DATA, CP210X_VALUE_DATA, info->interface, NULL, 0, C_SETDATA);
-	}
-	applog(LOG_INFO, "%s-%i: unplug detected", compac->drv->name, compac->device_id);
-	usb_uninit(compac);
-}
-
 static bool compac_prepare(struct thr_info *thr)
 {
 	struct cgpu_info *compac = thr->cgpu;
@@ -620,17 +606,12 @@ static bool compac_prepare(struct thr_info *thr)
 		if (info->ident != IDENT_BSD && info->ident != IDENT_GSD) {
 			usb_nodev(compac);
 		} else {
-			//DOA.   Only thing left to do is unplug.
+			//DOA.   Don't bother retyring, will just waste resources.
 			compac->deven = DEV_DISABLED;
-			if (thr_info_create(&(info->xthr), NULL, compac_unplug, (void *)compac)) {
-				applog(LOG_ERR, "%s-%i: unplug thread create failed", compac->drv->name, compac->device_id);
-				return false;
-			}
-			pthread_detach(info->xthr.pth);
 		}
 	}
 
-	return miner_ok;
+	return true;
 }
 
 static bool compac_init(struct thr_info *thr)
