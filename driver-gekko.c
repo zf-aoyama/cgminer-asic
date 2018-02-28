@@ -603,11 +603,11 @@ static bool compac_prepare(struct thr_info *thr)
 	}
 
 	if (!miner_ok) {
+		applog(LOG_WARNING, "%s %d: found 0 chip(s)", compac->drv->name, compac->device_id);
 		if (info->ident != IDENT_BSD && info->ident != IDENT_GSD) {
 			usb_nodev(compac);
 		} else {
 			//DOA.   Don't bother retyring, will just waste resources.
-			applog(LOG_WARNING, "%s %d: found 0 chip(s)", compac->drv->name, compac->device_id);
 			compac->deven = DEV_DISABLED;
 		}
 	}
