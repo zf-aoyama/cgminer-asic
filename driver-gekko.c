@@ -283,7 +283,7 @@ static void *compac_listen(void *object)
 		} else {
 			switch (info->mining_state) {
 				case MINER_CHIP_COUNT_XX:
-					applog(LOG_INFO, "%s %d: found %d chip(s)", compac->drv->name, compac->device_id, info->chips);
+					applog(LOG_WARNING, "%s %d: found %d chip(s)", compac->drv->name, compac->device_id, info->chips);
 					info->mining_state = MINER_CHIP_COUNT_OK;
 					break;
 				default:
@@ -607,6 +607,7 @@ static bool compac_prepare(struct thr_info *thr)
 			usb_nodev(compac);
 		} else {
 			//DOA.   Don't bother retyring, will just waste resources.
+			applog(LOG_WARNING, "%s %d: found 0 chip(s)", compac->drv->name, compac->device_id);
 			compac->deven = DEV_DISABLED;
 		}
 	}
