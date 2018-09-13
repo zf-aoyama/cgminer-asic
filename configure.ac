@@ -1,8 +1,8 @@
 ##--##--##--##--##--##--##--##--##--##--##--##--##--##--##--##--##
 ##--##--##--##--##--##--##--##--##--##--##--##--##--##--##--##--##
 m4_define([v_maj], [4])
-m4_define([v_min], [10])
-m4_define([v_mic], [0])
+m4_define([v_min], [11])
+m4_define([v_mic], [1])
 ##--##--##--##--##--##--##--##--##--##--##--##--##--##--##--##--##
 m4_define([v_ver], [v_maj.v_min.v_mic])
 m4_define([lt_rev], m4_eval(v_maj + v_min))
@@ -81,6 +81,9 @@ case $target in
     have_x86_64=false
     ;;
 esac
+
+#CFLAGS="$CFLAGS -Wimplicit-fallthrough=0"
+#^ causes problem on gcc 4.9 - pass in from CFLAG if needed
 
 case $target in
   *-*-linux-gnu*)
@@ -282,6 +285,7 @@ if test "x$bitfury" = xyes; then
 fi
 AM_CONDITIONAL([HAS_BITFURY], [test x$bitfury = xyes])
 
+
 bitfury16="no"
 
 AC_ARG_ENABLE([bitfury16],
@@ -294,6 +298,7 @@ if test "x$bitfury16" = xyes; then
 	standalone="yes"
 fi
 AM_CONDITIONAL([HAS_BITFURY16], [test x$bitfury16 = xyes])
+
 
 bitmine_A1="no"
 
@@ -345,6 +350,21 @@ if test "x$cointerra" = xyes; then
 	drivercount=x$drivercount
 fi
 AM_CONDITIONAL([HAS_COINTERRA], [test x$cointerra = xyes])
+
+
+dragonmint_t1="no"
+
+AC_ARG_ENABLE([dragonmint_t1],
+	[AC_HELP_STRING([--enable-dragonmint_t1],[Compile support for Dragonmint T1 ASICs STANDALONE(default disabled)])],
+	[dragonmint_t1=$enableval]
+	)
+if test "x$dragonmint_t1" = xyes; then
+	AC_DEFINE([USE_DRAGONMINT_T1], [1], [Defined to 1 if Dragonmint T1 support is wanted])
+	AC_DEFINE([USE_VMASK], [1], [Defined to 1 if version mask rolling is wanted])
+	drivercount=x$drivercount
+	standalone="yes"
+fi
+AM_CONDITIONAL([HAS_DRAGONMINT_T1], [test x$dragonmint_t1 = xyes])
 
 
 drillbit="no"
@@ -561,29 +581,26 @@ else
 	LIBUSB_LIBS=""
 fi
 
-djansson="no"
-AC_ARG_WITH([system-jansson],
-	[AC_HELP_STRING([--with-system-jansson],[NOT RECOMMENDED! Compile against dynamic system jansson. (Default use included static jansson)])],
-	[djansson=$withval]
-)
+djansson="yes"
+case $target in
+	*-*-freebsd*)
+		JANSSON_LIBS="-ljansson"
+		JANSSON_CFLAGS=""
+		AC_DEFINE(HAVE_JANSSON, 1, [Define if you have jansson >= 2.6])
+		;;
+	*)
+		PKG_CHECK_MODULES(JANSSON, jansson >= 2.6, [AC_DEFINE(HAVE_JANSSON, 1, [Define if you have jansson >= 2.6])], [djansson="no"])
+		;;
+esac
 
-if test "x$djansson" != xno; then
-	case $target in
-		*-*-freebsd*)
-			JANSSON_LIBS="-ljansson"
-			JANSSON_CFLAGS=""
-			AC_DEFINE(HAVE_JANSSON, 1, [Define if you have jansson >= 2.6])
-			;;
-		*)
-			PKG_CHECK_MODULES(JANSSON, jansson >= 2.6, [AC_DEFINE(HAVE_JANSSON, 1, [Define if you have jansson >= 2.6])], [AC_MSG_ERROR([Could not find jansson library - please install jansson >= 2.6])])
-			;;
-	esac
-else
+if test "x$djansson" = xno; then
 	AC_CONFIG_SUBDIRS([compat/jansson-2.9])
 	JANSSON_LIBS="compat/jansson-2.9/src/.libs/libjansson.a"
 fi
 
 AM_CONDITIONAL([WANT_STATIC_JANSSON], [test x$djansson = xno])
+
+AC_CHECK_HEADERS([uthash.h])
 
 PKG_PROG_PKG_CONFIG()
 
@@ -733,6 +750,12 @@ echo "  curses.TUI...........: $cursesmsg"
 
 
 echo
+if test "x$dragonmint_t1" = xyes; then
+	echo "  DragonMint.T1.Halong.: Enabled"
+else
+        echo "  DragonMint.T1.Halong.: Disabled"
+fi
+
 if test "x$ants1" = xyes; then
 	echo "  Antminer.S1.Bitmain..: Enabled"
 else
@@ -848,11 +871,16 @@ else
 	echo "  Spond-sp30.ASICs.....: Disabled"
 fi
 
-
 if test "x$bitmine_A1" = xyes; then
 	echo "  Bitmine-A1.ASICs.....: Enabled"
 else
 	echo "  Bitmine-A1.ASICs.....: Disabled"
+fi
+
+if test "x$dragonmint_t1" = xyes; then
+	echo "  Dragonmint.T1.ASICs..: Enabled"
+else
+	echo "  Dragonmint.T1.ASICs..: Disabled"
 fi
 
 if test "x$drillbit" = xyes; then
@@ -898,7 +926,7 @@ else
 fi
 
 #Add any new device to this, along with a no on the end of the test
-if test "x$avalon$avalon2$avalon4$avalon7$avalon_miner$bab$bflsc$bitforce$bitfury$bitfury16$blockerupter$gekko$hashfast$hashratio$icarus$klondike$knc$modminer$drillbit$minion$cointerra$bitmine_A1$ants1$ants2$ants3$sp10$sp30" = xnonononononononononononononononononononononononononono; then
+if test "x$avalon$avalon2$avalon4$avalon7$avalon_miner$bab$bflsc$bitforce$bitfury$bitfury16$blockerupter$gekko$hashfast$hashratio$icarus$klondike$knc$modminer$drillbit$minion$cointerra$bitmine_A1$ants1$ants2$ants3$sp10$sp30$dragonmint_t1" = xnononononononononononononononononononononononononononono; then
 	echo
 	AC_MSG_ERROR([No mining devices configured in])
 	echo

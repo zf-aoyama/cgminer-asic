@@ -8,11 +8,18 @@
 #include <sys/time.h>
 #include <pthread.h>
 #include <jansson.h>
+#include <inttypes.h>
 
 #include <sched.h>
 
 #include "elist.h"
-#include "uthash.h"
+
+#if HAVE_UTHASH_H
+# include <uthash.h>
+#else
+# include "uthash.h"
+#endif
+
 #include "logging.h"
 #include "util.h"
 #include <sys/types.h>
@@ -243,20 +250,21 @@ static inline int fsync (int fd)
 	DRIVER_ADD_COMMAND(avalon4) \
 	DRIVER_ADD_COMMAND(avalon7) \
 	DRIVER_ADD_COMMAND(avalonm) \
+	DRIVER_ADD_COMMAND(bab) \
 	DRIVER_ADD_COMMAND(bflsc) \
 	DRIVER_ADD_COMMAND(bitfury) \
 	DRIVER_ADD_COMMAND(bitfury16) \
+	DRIVER_ADD_COMMAND(bitmineA1) \
 	DRIVER_ADD_COMMAND(blockerupter) \
 	DRIVER_ADD_COMMAND(cointerra) \
 	DRIVER_ADD_COMMAND(gekko) \
+	DRIVER_ADD_COMMAND(dragonmintT1) \
 	DRIVER_ADD_COMMAND(hashfast) \
+	DRIVER_ADD_COMMAND(drillbit) \
 	DRIVER_ADD_COMMAND(hashratio) \
 	DRIVER_ADD_COMMAND(icarus) \
 	DRIVER_ADD_COMMAND(klondike) \
 	DRIVER_ADD_COMMAND(knc) \
-	DRIVER_ADD_COMMAND(bitmineA1) \
-	DRIVER_ADD_COMMAND(drillbit) \
-	DRIVER_ADD_COMMAND(bab) \
 	DRIVER_ADD_COMMAND(minion) \
 	DRIVER_ADD_COMMAND(sp10) \
 	DRIVER_ADD_COMMAND(sp30)
@@ -322,6 +330,7 @@ struct device_drv {
 	void (*get_statline_before)(char *, size_t, struct cgpu_info *);
 	void (*get_statline)(char *, size_t, struct cgpu_info *);
 	struct api_data *(*get_api_stats)(struct cgpu_info *);
+	struct api_data *(*get_api_debug)(struct cgpu_info *);
 	bool (*get_stats)(struct cgpu_info *);
 	void (*identify_device)(struct cgpu_info *); // e.g. to flash a led
 	char *(*set_device)(struct cgpu_info *, char *option, char *setting, char *replybuf);
@@ -501,6 +510,13 @@ struct cgpu_info {
 	bool new_work;
 
 	double temp;
+#ifdef USE_DRAGONMINT_T1
+	double temp_max;
+	double temp_min;
+	int fan_duty;
+	int chainNum;
+	double mhs_av;
+#endif
 	int cutofftemp;
 
 	int64_t diff1;
@@ -1041,6 +1057,16 @@ extern char *opt_bab_options;
 #ifdef USE_BITMINE_A1
 extern char *opt_bitmine_a1_options;
 #endif
+#ifdef USE_DRAGONMINT_T1
+extern char *opt_dragonmint_t1_options;
+extern int opt_T1Pll[];
+extern int opt_T1Vol[];
+extern int opt_T1VID[];
+extern bool opt_T1auto;
+extern bool opt_T1_efficient;
+extern bool opt_T1_performance;
+extern int opt_T1_target;
+#endif
 #ifdef USE_ANT_S1
 extern char *opt_bitmain_options;
 extern char *opt_bitmain_freq;
@@ -1140,6 +1166,7 @@ bool submit_nonce2_nonce(struct thr_info *thr, struct pool *pool, struct pool *r
 #endif
 extern int restart_wait(struct thr_info *thr, unsigned int mstime);
 
+extern void raise_cgminer(void);
 extern void kill_work(void);
 
 extern void reinit_device(struct cgpu_info *cgpu);
@@ -1238,6 +1265,12 @@ struct pool {
 	double diff_accepted;
 	double diff_rejected;
 	double diff_stale;
+
+	/* Vmask data */
+	bool vmask; /* Supports vmask */
+	uint32_t vmask_001[16];
+	char vmask_002[16][9];
+	int vmask_003[4];
 
 	bool submit_fail;
 	bool idle;
@@ -1375,8 +1408,13 @@ struct pool {
 struct work {
 	unsigned char	data[128];
 	unsigned char	midstate[32];
+	unsigned char   midstate1[32];
+	unsigned char   midstate2[32];
+	unsigned char   midstate3[32];
 	unsigned char	target[32];
 	unsigned char	hash[32];
+
+	uint16_t        micro_job_id;
 
 	/* This is the diff the device is currently aiming for and must be
 	 * the minimum of work_difficulty & drv->max_diff */
@@ -1526,7 +1564,7 @@ extern void pool_died(struct pool *pool);
 extern struct thread_q *tq_new(void);
 extern void tq_free(struct thread_q *tq);
 extern bool tq_push(struct thread_q *tq, void *data);
-extern void *tq_pop(struct thread_q *tq, const struct timespec *abstime);
+extern void *tq_pop(struct thread_q *tq);
 extern void tq_freeze(struct thread_q *tq);
 extern void tq_thaw(struct thread_q *tq);
 extern bool successful_connect;
@@ -1610,6 +1648,8 @@ extern struct api_data *api_add_hs(struct api_data *root, char *name, double *da
 extern struct api_data *api_add_diff(struct api_data *root, char *name, double *data, bool copy_data);
 extern struct api_data *api_add_percent(struct api_data *root, char *name, double *data, bool copy_data);
 extern struct api_data *api_add_avg(struct api_data *root, char *name, float *data, bool copy_data);
+
+#define ROOT_ADD_API(FUNC, NAME, VAR, BOOL) root = api_add_##FUNC(root, (NAME), &(VAR), (BOOL))
 
 extern void dupalloc(struct cgpu_info *cgpu, int timelimit);
 extern void dupcounters(struct cgpu_info *cgpu, uint64_t *checked, uint64_t *dups);
