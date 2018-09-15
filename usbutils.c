@@ -203,15 +203,25 @@ static struct usb_intinfo bet_ints[] = {
 #endif
 
 #ifdef USE_GEKKO
-// Compac Device
-static struct usb_epinfo gek_epinfos[] = {
+// CP210X Devices
+static struct usb_epinfo gek1_epinfos[] = {
 	{ LIBUSB_TRANSFER_TYPE_BULK,	64,	EPI(1), 0, 0 },
 	{ LIBUSB_TRANSFER_TYPE_BULK,	64,	EPO(1), 0, 0 }
 };
 
-static struct usb_intinfo gek_ints[] = {
-	USB_EPS(0, gek_epinfos)
+static struct usb_intinfo gek1_ints[] = {
+	USB_EPS(0, gek1_epinfos)
 };
+
+// FTDI Devices
+static struct usb_epinfo gek2_epinfos[] = {
+	{ LIBUSB_TRANSFER_TYPE_BULK,	64,	EPI(1), 0, 0 },
+	{ LIBUSB_TRANSFER_TYPE_BULK,	64,	EPO(2), 0, 0 }
+};
+static struct usb_intinfo gek2_ints[] = {
+	USB_EPS(0, gek2_epinfos)
+};
+
 #endif
 
 #ifdef USE_DRILLBIT
@@ -953,7 +963,7 @@ static struct usb_find_devices find_dev[] = {
 		.config = 1,
 		.timeout = COMPAC_TIMEOUT_MS,
 		.latency = LATENCY_UNUSED,
-		INTINFO(gek_ints) },
+		INTINFO(gek1_ints) },
 	{
 		.drv = DRIVER_gekko,
 		.name = "BSD",
@@ -965,7 +975,7 @@ static struct usb_find_devices find_dev[] = {
 		.config = 1,
 		.timeout = COMPAC_TIMEOUT_MS,
 		.latency = LATENCY_UNUSED,
-		INTINFO(gek_ints) },
+		INTINFO(gek1_ints) },
 	{
 		.drv = DRIVER_gekko,
 		.name = "BSE",
@@ -977,7 +987,7 @@ static struct usb_find_devices find_dev[] = {
 		.config = 1,
 		.timeout = COMPAC_TIMEOUT_MS,
 		.latency = LATENCY_UNUSED,
-		INTINFO(gek_ints) },
+		INTINFO(gek1_ints) },
 	{
 		.drv = DRIVER_gekko,
 		.name = "GSC",
@@ -989,7 +999,7 @@ static struct usb_find_devices find_dev[] = {
 		.config = 1,
 		.timeout = COMPAC_TIMEOUT_MS,
 		.latency = LATENCY_UNUSED,
-		INTINFO(gek_ints) },
+		INTINFO(gek1_ints) },
 	{
 		.drv = DRIVER_gekko,
 		.name = "GSD",
@@ -1001,7 +1011,7 @@ static struct usb_find_devices find_dev[] = {
 		.config = 1,
 		.timeout = COMPAC_TIMEOUT_MS,
 		.latency = LATENCY_UNUSED,
-		INTINFO(gek_ints) },
+		INTINFO(gek1_ints) },
 	{
 		.drv = DRIVER_gekko,
 		.name = "GSE",
@@ -1013,7 +1023,19 @@ static struct usb_find_devices find_dev[] = {
 		.config = 1,
 		.timeout = COMPAC_TIMEOUT_MS,
 		.latency = LATENCY_UNUSED,
-		INTINFO(gek_ints) },
+		INTINFO(gek1_ints) },
+	{
+		.drv = DRIVER_gekko,
+		.name = "GSH",
+		.ident = IDENT_GSH,
+		.idVendor = 0x0403,
+		.idProduct = 0x6015,
+		.iManufacturer = "GekkoScience",
+		.iProduct = "NewPac Bitcoin Miner",
+		.config = 1,
+		.timeout = COMPAC_TIMEOUT_MS,
+		.latency = LATENCY_UNUSED,
+		INTINFO(gek2_ints) },
 #endif
 	{ DRIVER_MAX, NULL, 0, 0, 0, NULL, NULL, 0, 0, 0, 0, NULL }
 };

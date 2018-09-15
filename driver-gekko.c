@@ -1,5 +1,6 @@
 #include "driver-gekko.h"
 #include "crc.h"
+#include "compat.h"
 #include <unistd.h>
 
 uint32_t bmcrc(unsigned char *ptr, uint32_t len)
@@ -38,7 +39,73 @@ void dumpbuffer(struct cgpu_info *compac, int LOG_LEVEL, char *note, unsigned ch
 	*pout++ = hex[(*ptr)&0xF];
 	*pout = 0;
 
-	applog(LOG_LEVEL, "%s %i %s: %s", compac->drv->name, compac->device_id, note, str);
+	applog(LOG_LEVEL, "%s %i: %s: %s", compac->drv->name, compac->device_id, note, str);
+}
+
+static int compac_micro_send(struct cgpu_info *compac, uint8_t cmd, uint8_t channel, uint8_t value)
+{
+	struct COMPAC_INFO *info = compac->device_data;
+	int bytes = 1;
+	int read_bytes = 1;
+	int micro_temp;
+	uint8_t temp;
+	unsigned short usb_val;
+	char null[255];
+
+	// synchronous : safe to run in the listen thread.
+	if (!info->micro_found) {
+		return 0;
+	}
+
+	// Baud Rate : 500,000
+	mutex_lock(&info->wlock);
+
+	usb_val = (FTDI_BITMODE_CBUS << 8) | 0xF3; // low byte: bitmask - 1111 0011 - CB1(HI), CB0(HI)
+	usb_transfer(compac, FTDI_TYPE_OUT, FTDI_REQUEST_BITMODE, usb_val, info->interface, C_SETMODEM);
+	cgsleep_ms(2);
+	//usb_transfer(compac, FTDI_TYPE_OUT, FTDI_REQUEST_BAUD, 0x06, (FTDI_INDEX_BAUD_BTS & 0xff00) | info->interface, C_SETBAUD);
+
+	info->cmd[0] = cmd | channel;
+	info->cmd[1] = value;
+
+	if (value != 0x00 || cmd == M2_SET_VCORE) {
+		bytes = 2;
+	}
+
+	usb_read_timeout(compac, (char *)info->rx, 255, &read_bytes, 1, C_GETRESULTS);
+
+	dumpbuffer(compac, LOG_INFO, "(micro) TX", info->cmd, bytes);
+	usb_write(compac, info->cmd, bytes, &read_bytes, C_REQUESTRESULTS);
+
+	memset(info->rx, 0, info->rx_len);
+	usb_read_timeout(compac, (char *)info->rx, 1, &read_bytes, 5, C_GETRESULTS);
+
+	if (read_bytes > 0) {
+		dumpbuffer(compac, LOG_INFO, "(micro) RX", info->rx, read_bytes);
+		switch (cmd) {
+			case 0x20:
+				temp = info->rx[0];
+				micro_temp = 32 + 1.8 * temp;
+				if (micro_temp != info->micro_temp) {
+					info->micro_temp = micro_temp;
+					applog(LOG_WARNING, "%s %d: micro temp changed to %d°C / %.1f°F", compac->drv->name, compac->device_id, temp, info->micro_temp);
+				}
+				break;
+			default:
+				break;
+		}
+	}
+
+	// Restore Baud Rate
+	//usb_transfer(compac, FTDI_TYPE_OUT, FTDI_REQUEST_BAUD, (info->bauddiv + 1), (FTDI_INDEX_BAUD_BTS & 0xff00) | info->interface, C_SETBAUD);
+
+	usb_val = (FTDI_BITMODE_CBUS << 8) | 0xF2; // low byte: bitmask - 1111 0010 - CB1(HI), CB0(LO)
+	usb_transfer(compac, FTDI_TYPE_OUT, FTDI_REQUEST_BITMODE, usb_val, info->interface, C_SETMODEM);
+	cgsleep_ms(2);
+	mutex_unlock(&info->wlock);
+	
+	return read_bytes;
+
 }
 
 static void compac_send(struct cgpu_info *compac, unsigned char *req_tx, uint32_t bytes, uint32_t crc_bits)
@@ -56,7 +123,9 @@ static void compac_send(struct cgpu_info *compac, unsigned char *req_tx, uint32_
 
 	cgsleep_ms(1);
 	dumpbuffer(compac, LOG_INFO, "TX", info->cmd, bytes);
+	mutex_lock(&info->wlock);
 	usb_write(compac, info->cmd, bytes, &read_bytes, C_REQUESTRESULTS);
+	mutex_unlock(&info->wlock);
 }
 
 static void compac_send_chain_inactive(struct cgpu_info *compac)
@@ -65,7 +134,21 @@ static void compac_send_chain_inactive(struct cgpu_info *compac)
 	int i;
 
 	applog(LOG_INFO,"%s %d: sending chain inactive for %d chip(s)", compac->drv->name, compac->device_id, info->chips);
-	if (info->asic_type == BM1384) {
+	if (info->asic_type == BM1387) {
+		unsigned char buffer[5] = {0x55, 0x05, 0x00, 0x00, 0x00};
+		compac_send(compac, (char *)buffer, sizeof(buffer), 8 * sizeof(buffer) - 8);; // chain inactive
+		compac_send(compac, (char *)buffer, sizeof(buffer), 8 * sizeof(buffer) - 8);; // chain inactive
+		compac_send(compac, (char *)buffer, sizeof(buffer), 8 * sizeof(buffer) - 8);; // chain inactive
+		for (i = 0; i < info->chips; i++) {
+			buffer[0] = 0x41;
+			buffer[1] = 0x05;
+			buffer[2] = (0x100 / info->chips) * i;
+			compac_send(compac, (char *)buffer, sizeof(buffer), 8 * sizeof(buffer) - 8);;
+		}
+		unsigned char gateblk[9] = {0x58, 0x09, 0x00, 0x1C, 0x40, 0x20, 0x99, 0x80, 0x01};
+		gateblk[6] = 0x80 | info->bauddiv;
+		compac_send(compac, (char *)gateblk, sizeof(gateblk), 8 * sizeof(gateblk) - 8);; // chain inactive
+	} else if (info->asic_type == BM1384) {
 		unsigned char buffer[] = {0x85, 0x00, 0x00, 0x00};
 		compac_send(compac, (char *)buffer, sizeof(buffer), 8 * sizeof(buffer) - 5); // chain inactive
 		for (i = 0; i < info->chips; i++) {
@@ -92,7 +175,22 @@ static void compac_set_frequency(struct cgpu_info *compac, float frequency)
 	struct COMPAC_INFO *info = compac->device_data;
 	uint32_t i, r, r1, r2, r3, p1, p2, pll;
 
-	if (info->asic_type == BM1384) {
+	if (info->asic_type == BM1387) {
+		unsigned char buffer[] = {0x58, 0x09, 0x00, 0x0C, 0x00, 0x50, 0x02, 0x41, 0x00};   //250MHz -- osc of 25MHz
+		frequency = bound(frequency, 100, 900);
+		frequency = ceil(100 * (frequency) / 625.0) * 6.25;
+
+		if (frequency < 400) {
+			buffer[7] = 0x41;
+			buffer[5] = (frequency * 8) / 25;
+		} else {
+			buffer[7] = 0x21;
+			buffer[5] = (frequency * 4) / 25;
+		}
+		applog(LOG_WARNING, "%s %d: setting frequency to %.2fMHz", compac->drv->name, compac->device_id, frequency);
+		compac_send(compac, (char *)buffer, sizeof(buffer), 8 * sizeof(buffer) - 8);
+		info->frequency = frequency;
+	} else if (info->asic_type == BM1384) {
 		unsigned char buffer[] = {0x82, 0x0b, 0x83, 0x00};
 
 		frequency = bound(frequency, 6, 500);
@@ -131,6 +229,7 @@ static void compac_set_frequency(struct cgpu_info *compac, float frequency)
 	info->hashrate = info->chips * info->frequency * info->cores * 1000000;
 	info->fullscan_ms = 1000.0 * 0xffffffffull / info->hashrate;
 	info->ticket_mask = bound(pow(2, ceil(log(info->hashrate / (2.0 * 0xffffffffull)) / log(2))) - 1, 0, 4000);
+	info->ticket_mask = (info->asic_type == BM1387) ? 0 : info->ticket_mask;
 	info->difficulty = info->ticket_mask + 1;
 
 }
@@ -146,7 +245,9 @@ static uint64_t compac_check_nonce(struct cgpu_info *compac)
 
 	uint32_t job_id;
 
-	if (info->asic_type == BM1384) {
+	if (info->asic_type == BM1387) {
+		job_id = info->rx[5] & 0xff;
+	} else if (info->asic_type == BM1384) {
 		job_id = info->rx[4] ^ 0x80;
 	}
 
@@ -207,7 +308,7 @@ static void compac_flush_buffer(struct cgpu_info *compac)
 	unsigned char resp[32];
 
 	while (read_bytes) {
-		usb_read_timeout(compac, (char *)resp, 32, &read_bytes, 5, C_REQUESTRESULTS);
+		usb_read_timeout(compac, (char *)resp, 32, &read_bytes, 0, C_REQUESTRESULTS);
 	}
 }
 
@@ -215,6 +316,33 @@ static void compac_flush_work(struct cgpu_info *compac)
 {
 	compac_flush_buffer(compac);
 	compac_update_work(compac);
+}
+
+static void compac_toggle_reset(struct cgpu_info *compac)
+{
+	struct COMPAC_INFO *info = compac->device_data;
+	applog(LOG_WARNING,"%s %d: Toggling ASIC nRST to reset", compac->drv->name, compac->device_id);
+	//usb_transfer(compac, FTDI_TYPE_OUT, FTDI_REQUEST_MODEM, FTDI_SETDTR_HIGH, info->interface, C_SETMODEM);
+	//cgsleep_ms(30);
+	//usb_transfer(compac, FTDI_TYPE_OUT, FTDI_REQUEST_MODEM, FTDI_SETDTR_LOW, info->interface, C_SETMODEM);
+	//cgsleep_ms(30);
+	//usb_transfer(compac, FTDI_TYPE_OUT, FTDI_REQUEST_MODEM, FTDI_SETDTR_HIGH, info->interface, C_SETMODEM);
+	//cgsleep_ms(30);
+
+	unsigned short usb_val;
+
+	usb_val = (FTDI_BITMODE_CBUS << 8) | 0xF2; // low byte: bitmask - 1111 0010 - CB1(HI)
+	usb_transfer(compac, FTDI_TYPE_OUT, FTDI_REQUEST_BITMODE, usb_val, info->interface, C_SETMODEM);
+	cgsleep_ms(30);
+
+	usb_val = (FTDI_BITMODE_CBUS << 8) | 0xF0; // low byte: bitmask - 1111 0000 - CB1(LO)
+	usb_transfer(compac, FTDI_TYPE_OUT, FTDI_REQUEST_BITMODE, usb_val, info->interface, C_SETMODEM);
+	cgsleep_ms(30);
+
+	usb_val = (FTDI_BITMODE_CBUS << 8) | 0xF2; // low byte: bitmask - 1111 0010 - CB1(HI)
+	usb_transfer(compac, FTDI_TYPE_OUT, FTDI_REQUEST_BITMODE, usb_val, info->interface, C_SETMODEM);
+	cgsleep_ms(30);
+
 }
 
 static void *compac_listen(void *object)
@@ -228,30 +356,40 @@ static void *compac_listen(void *object)
 	while (info->mining_state != MINER_SHUTDOWN) {
 		memset(info->rx, 0, info->rx_len);
 		err = usb_read_timeout(compac, (char *)info->rx, info->rx_len, &read_bytes, 100, C_GETRESULTS);
+		cgtime(&now);
+
 		if (read_bytes > 0) {
 			cmd_resp = (info->rx[read_bytes - 1] <= 0x1F && bmcrc(info->rx, 8 * read_bytes - 5) == info->rx[read_bytes - 1]) ? 1 : 0;
 			dumpbuffer(compac, LOG_INFO, "RX", info->rx, read_bytes);
 
 			if (cmd_resp && info->rx[0] == 0x80) {
 				float frequency;
-				cgtime(&now);
-
-				if (info->asic_type == BM1384) {
-					frequency = (info->rx[1] + 1) * 6.25 / (1 + info->rx[2] & 0x0f) * pow(2, (3 - info->rx[3])) + ((info->rx[2] >> 4) * 6.25);
-				}
-
-				if (frequency != info->frequency) {
-					applog(LOG_WARNING,"%s %d: frequency changed %.2fMHz -> %.2fMHz", compac->drv->name, compac->device_id, info->frequency, frequency);
-				} else {
-					applog(LOG_INFO,"%s %d: chip reported frequency of %.2fMHz", compac->drv->name, compac->device_id, frequency);
-				}
 				cgtime(&info->last_frequency_report);
 
-				info->frequency = frequency;
-				info->hashrate = info->chips * info->frequency * info->cores * 1000000;
-				info->fullscan_ms = 1000.0 * 0xffffffffull / info->hashrate;
-				info->ticket_mask = bound(pow(2, ceil(log(info->hashrate / (2.0 * 0xffffffffull)) / log(2))) - 1, 0, 4000);
-				info->difficulty = info->ticket_mask + 1;
+				if (info->asic_type == BM1387 && (info->rx[2] == 0 || (info->rx[3] >> 4) == 0 || (info->rx[3] & 0x0f) == 0)) {
+					dumpbuffer(compac, LOG_WARNING, "RX", info->rx, read_bytes);
+					applog(LOG_WARNING,"%s %d: bad frequency", compac->drv->name, compac->device_id);
+				} else {
+					if (info->asic_type == BM1387) {
+						frequency = 25 * info->rx[1] / (info->rx[2] * (info->rx[3] >> 4) * (info->rx[3] & 0x0f));
+					} else if (info->asic_type == BM1384) {
+						frequency = (info->rx[1] + 1) * 6.25 / (1 + info->rx[2] & 0x0f) * pow(2, (3 - info->rx[3])) + ((info->rx[2] >> 4) * 6.25);
+					}
+
+					if (frequency != info->frequency) {
+						applog(LOG_WARNING,"%s %d: frequency changed %.2fMHz -> %.2fMHz", compac->drv->name, compac->device_id, info->frequency, frequency);
+					} else {
+						applog(LOG_INFO,"%s %d: chip reported frequency of %.2fMHz", compac->drv->name, compac->device_id, frequency);
+					}
+
+					info->frequency = frequency;
+					info->hashrate = info->chips * info->frequency * info->cores * 1000000;
+					info->fullscan_ms = 1000.0 * 0xffffffffull / info->hashrate;
+					info->ticket_mask = bound(pow(2, ceil(log(info->hashrate / (2.0 * 0xffffffffull)) / log(2))) - 1, 0, 4000);
+					info->ticket_mask = (info->asic_type == BM1387) ? 0 : info->ticket_mask;
+					info->difficulty = info->ticket_mask + 1;
+
+				}
 
 			}
 
@@ -281,6 +419,15 @@ static void *compac_listen(void *object)
 					break;
 			}
 		} else {
+
+			// RX line is idle, let's squeeze in a command to the micro if needed.
+			if (info->asic_type == BM1387) {
+				if (ms_tdiff(&now, &info->last_micro_ping) > 5000 && ms_tdiff(&now, &info->last_task) > 1 && ms_tdiff(&now, &info->last_task) < 3) {
+					compac_micro_send(compac, M1_GET_TEMP, 0x00, 0x00);
+					cgtime(&info->last_micro_ping);
+				}
+			}
+
 			switch (info->mining_state) {
 				case MINER_CHIP_COUNT_XX:
 					applog(LOG_WARNING, "%s %d: found %d chip(s)", compac->drv->name, compac->device_id, info->chips);
@@ -300,7 +447,23 @@ static void init_task(struct COMPAC_INFO *info)
 
 	memset(info->task, 0, info->task_len);
 
-	if (info->asic_type == BM1384) {
+	if (info->asic_type == BM1387) {
+		info->task[0] = 0x21;
+		info->task[1] = 0x36;
+		info->task[2] = info->job_id & 0xff;
+		info->task[3] = 0x01;
+
+		if (info->mining_state == MINER_MINING) {
+			stuff_reverse(info->task + 8, work->data + 64, 12);
+			stuff_reverse(info->task + 20, work->midstate, 32);
+			//info->task[3] = 0x00;
+		} else {
+			memset(info->task + 8, 0xff, 12);
+		}
+		unsigned short crc = crc16_false(info->task, 52);
+		info->task[52] = (crc >> 8) & 0xff;
+		info->task[53] = crc & 0xff;
+	} else if (info->asic_type == BM1384) {
 		if (info->mining_state == MINER_MINING) {
 			stuff_reverse(info->task, work->midstate, 32);
 			stuff_reverse(info->task + 52, work->data + 64, 12);
@@ -315,12 +478,77 @@ static void init_task(struct COMPAC_INFO *info)
 	}
 }
 
+static bool compac_init(struct thr_info *thr)
+{
+	struct cgpu_info *compac = thr->cgpu;
+	struct COMPAC_INFO *info = compac->device_data;
+
+	info->mining_state = MINER_INIT;
+	info->prev_nonce = 0;
+
+	cgtime(&info->last_write_error);
+	cgtime(&info->last_frequency_adjust);
+	cgtime(&info->last_frequency_ping);
+	cgtime(&info->last_micro_ping);
+	cgtime(&info->last_scanhash);
+	cgtime(&info->last_task);
+	cgtime(&info->start_time);
+
+	switch (info->ident) {
+		case IDENT_BSC:
+		case IDENT_GSC:
+			info->frequency_requested = opt_gekko_gsc_freq;
+			info->frequency_start = info->frequency_requested;
+			break;
+		case IDENT_BSD:
+		case IDENT_GSD:
+			info->frequency_requested = opt_gekko_gsd_freq;
+			info->frequency_start = opt_gekko_start_freq;
+			break;
+		case IDENT_BSE:
+		case IDENT_GSE:
+			info->frequency_requested = opt_gekko_gse_freq;
+			info->frequency_start = opt_gekko_start_freq;
+			break;
+		case IDENT_GSH:
+			info->frequency_requested = opt_gekko_gsh_freq;
+			info->frequency_start = opt_gekko_gsh_freq;
+			break;
+		default:
+			info->frequency_requested = 200;
+			info->frequency_start = info->frequency_requested;
+			break;
+	}
+	if (info->frequency_start > info->frequency_requested) {
+		info->frequency_start = info->frequency_requested;
+	}
+	info->frequency_requested = ceil(100 * (info->frequency_requested) / 625.0) * 6.25;
+	info->frequency_start = ceil(100 * (info->frequency_start) / 625.0) * 6.25;
+
+	if (!info->rthr.pth) {
+		pthread_mutex_init(&info->lock, NULL);
+		pthread_mutex_init(&info->wlock, NULL);
+
+		if (thr_info_create(&(info->rthr), NULL, compac_listen, (void *)compac)) {
+			applog(LOG_ERR, "%s %i: thread create failed", compac->drv->name, compac->device_id);
+			return false;
+		} else {
+			applog(LOG_WARNING, "%s %i: read thread created", compac->drv->name, compac->device_id);
+		}
+
+		pthread_detach(info->rthr.pth);
+	}
+	
+	return true;
+}
+
 static int64_t compac_scanwork(struct thr_info *thr)
 {
 	struct cgpu_info *compac = thr->cgpu;
 	struct COMPAC_INFO *info = compac->device_data;
 	struct timeval now;
-	int i, read_bytes, sleep_ms;
+	int i, read_bytes, sleep_ms, ret_nice;
+	//int prio_before, prio_after;
 	uint32_t err = 0;
 	uint64_t max_task_wait = 0;
 	uint64_t hashes = 0;
@@ -336,10 +564,18 @@ static int64_t compac_scanwork(struct thr_info *thr)
 
 	switch (info->mining_state) {
 		case MINER_INIT:
+			//policy = sched_getscheduler(0);
+			//high_prio = sched_get_priority_max(policy);
+			//pthread_setschedprio(pthread_self(), high_prio);
+			ret_nice = nice(-20);
+			applog(LOG_INFO, "%s %d: work thread niceness (%d)", compac->drv->name, compac->device_id, ret_nice);
 			info->mining_state = MINER_CHIP_COUNT;
 			info->chips = 0;
 			info->ramping = 0;
-			if (info->asic_type == BM1384) {
+			if (info->asic_type == BM1387) {
+				unsigned char buffer[] = {0x54, 0x05, 0x00, 0x00, 0x00};
+				compac_send(compac, (char *)buffer, sizeof(buffer), 8 * sizeof(buffer) - 8);
+			} else if (info->asic_type == BM1384) {
 				unsigned char buffer[] = {0x84, 0x00, 0x00, 0x00};
 				compac_send(compac, (char *)buffer, sizeof(buffer), 8 * sizeof(buffer) - 5);
 			}
@@ -355,16 +591,19 @@ static int64_t compac_scanwork(struct thr_info *thr)
 			break;
 		case MINER_OPEN_CORE:
 			if (ms_tdiff(&now, &info->last_task) > (max_task_wait / 2)) {
-				if (info->zero_check) {
-					info->hashes += info->hashrate * info->task_ms / 1000;
-				}
+				//if (info->zero_check) {
+				//	info->hashes += info->hashrate * info->task_ms / 1000;
+				//}
+				
 				info->job_id = info->ramping % info->max_job_id;
 
 				//info->task_hcn = (0xffffffff / info->chips) * (1 + info->ramping) / info->cores;
 				init_task(info);
 				dumpbuffer(compac, LOG_DEBUG, "RAMP", info->task, info->task_len);
 
+				mutex_lock(&info->wlock);
 				usb_write(compac, (char *)info->task, info->task_len, &read_bytes, C_SENDWORK);
+				mutex_unlock(&info->wlock);
 				if (info->ramping > info->cores) {
 					info->job_id = 0;
 					info->mining_state = MINER_OPEN_CORE_OK;
@@ -382,17 +621,41 @@ static int64_t compac_scanwork(struct thr_info *thr)
 			cgtime(&info->start_time);
 			cgtime(&info->last_frequency_adjust);
 			cgtime(&info->last_frequency_ping);
+			cgtime(&info->last_micro_ping);
 			cgtime(&info->last_frequency_report);
 			info->mining_state = MINER_MINING;
 			break;
 		case MINER_MINING:
 			if (info->update_work || (ms_tdiff(&now, &info->last_task) > max_task_wait)) {
 				if (ms_tdiff(&now, &info->last_frequency_ping) > 5000) {
-					if (info->asic_type == BM1384) {
+					if (info->asic_type == BM1387) {
+						unsigned char buffer[] = {0x54, 0x05, 0x00, 0x0C, 0x00};  // PLL_PARAMETER
+						compac_send(compac, (char *)buffer, sizeof(buffer), 8 * sizeof(buffer) - 8);
+					} else if (info->asic_type == BM1384) {
 						unsigned char buffer[] = {0x84, 0x00, 0x04, 0x00};
 						compac_send(compac, (char *)buffer, sizeof(buffer), 8 * sizeof(buffer) - 5);
 					}
 					cgtime(&info->last_frequency_ping);
+
+					if (info->asic_type == BM1384 || info->asic_type == BM1387) {
+						uint64_t hashrate_5m, hashrate_1m;
+
+						hashrate_1m = (double)compac->rolling1 * 1000000ull;
+						hashrate_5m = (double)compac->rolling5 * 1000000ull;
+						if ((hashrate_1m < (0.33 * info->hashrate)) && ms_tdiff(&now, &info->start_time) > (3 * 60 * 1000)) {
+							applog(LOG_WARNING, "%" PRIu64 " : %" PRIu64 " : %" PRIu64, hashrate_1m, hashrate_5m, info->hashrate);
+							applog(LOG_WARNING,"%s %d: unhealthy miner", compac->drv->name, compac->device_id);
+							usb_nodev(compac);
+							return -1;
+						}
+
+						if (ms_tdiff(&now, &info->last_frequency_report) > (30 + 7500 * 3)) {
+							applog(LOG_WARNING,"%s %d: asic(s) went offline", compac->drv->name, compac->device_id);
+							usb_nodev(compac);
+							return -1;
+						}
+					}
+
 				}
 
 				if (info->accepted > 10 && ms_tdiff(&now, &info->last_frequency_ping) > 100 &&
@@ -413,27 +676,11 @@ static int64_t compac_scanwork(struct thr_info *thr)
 						}
 						compac_set_frequency(compac, new_frequency);
 						compac_send_chain_inactive(compac);
+						info->update_work = 1;
 						info->accepted = 0;
 					}
 
 					cgtime(&info->last_frequency_adjust);
-					//uint64_t hashrate_5m, hashrate_1m;
-
-					//hashrate_1m = (double)rolling1 * 1000000ull;
-					//hashrate_5m = (double)rolling5 * 1000000ull;
-					//if ((hashrate_1m < (0.75 * info->hashrate)) && ms_tdiff(&now, &info->start_time) > (3 * 60 * 1000)) {
-					//	applog(LOG_INFO, "%" PRIu64 " : %" PRIu64 " : %" PRIu64, hashrate_1m, hashrate_5m, info->hashrate);
-					//	applog(LOG_INFO,"%s %d: unhealthy miner", compac->drv->name, compac->device_id);
-					//	info->ramping = 0;
-					//	info->mining_state = MINER_CHIP_COUNT_OK;
-					//	inc_hw_errors(info->thr);
-					//}
-
-					//if (ms_tdiff(&now, &info->last_frequency_report) > (30 + 7500 * 3)) {
-					//	applog(LOG_WARNING,"%s %d: asic(s) went offline", compac->drv->name, compac->device_id);
-					//	usb_nodev(compac);
-					//	return -1;
-					//}
 				}
 
 				info->job_id = (info->job_id + 1) % info->max_job_id;
@@ -464,7 +711,9 @@ static int64_t compac_scanwork(struct thr_info *thr)
 				init_task(info);
 				dumpbuffer(compac, LOG_DEBUG, "TASK", info->task, info->task_len);
 
+				mutex_lock(&info->wlock);
 				err = usb_write(compac, (char *)info->task, info->task_len, &read_bytes, C_SENDWORK);
+				mutex_unlock(&info->wlock);
 				if (err != LIBUSB_SUCCESS) {
 					applog(LOG_WARNING,"%s %d: usb failure (%d)", compac->drv->name, compac->device_id, err);
 					return -1;
@@ -477,9 +726,10 @@ static int64_t compac_scanwork(struct thr_info *thr)
 				}
 				info->task_ms = (info->task_ms * 9 + ms_tdiff(&now, &info->last_task)) / 10;
 				cgtime(&info->last_task);
+				cgsleep_ms(sleep_ms);
 				return hashes;
 			}
-			
+
 			cgsleep_ms(sleep_ms);
 			break;
 		case MINER_MINING_DUPS:
@@ -548,6 +798,22 @@ static struct cgpu_info *compac_detect_one(struct libusb_device *dev, struct usb
 			usb_transfer_data(compac, CP210X_TYPE_OUT, CP210X_REQUEST_BAUD, 0, info->interface, &baudrate, sizeof (baudrate), C_SETBAUD);
 			usb_transfer_data(compac, CP210X_TYPE_OUT, CP210X_SET_LINE_CTL, bits, info->interface, NULL, 0, C_SETPARITY);
 			break;
+		case IDENT_GSH:
+			info->asic_type = BM1387;
+			info->rx_len = 7;
+			info->task_len = 54;
+			info->cores = 114;
+			info->max_job_id = 0x7f;
+			usb_transfer(compac, FTDI_TYPE_OUT, FTDI_REQUEST_RESET, FTDI_VALUE_RESET, info->interface, C_RESET);
+			usb_transfer(compac, FTDI_TYPE_OUT, FTDI_REQUEST_DATA, FTDI_VALUE_DATA_BTS, info->interface, C_SETDATA);
+			usb_transfer(compac, FTDI_TYPE_OUT, FTDI_REQUEST_BAUD, FTDI_VALUE_BAUD_BTS, (FTDI_INDEX_BAUD_BTS & 0xff00) | info->interface, C_SETBAUD);
+			usb_transfer(compac, FTDI_TYPE_OUT, FTDI_REQUEST_FLOW, FTDI_VALUE_FLOW, info->interface, C_SETFLOW);
+
+			usb_transfer(compac, FTDI_TYPE_OUT, FTDI_REQUEST_RESET, FTDI_VALUE_PURGE_TX, info->interface, C_PURGETX);
+			usb_transfer(compac, FTDI_TYPE_OUT, FTDI_REQUEST_RESET, FTDI_VALUE_PURGE_RX, info->interface, C_PURGERX);
+
+			compac_toggle_reset(compac);
+			break;
 		default:
 			quit(1, "%s compac_detect_one() invalid %s ident=%d",
 				compac->drv->dname, compac->drv->dname, info->ident);
@@ -586,81 +852,63 @@ static bool compac_prepare(struct thr_info *thr)
 	bool miner_ok = true;
 
 	info->thr = thr;
+	info->bauddiv = 0x19; // 115200
+	//info->bauddiv = 0x0D; // 214286
+	//info->bauddiv = 0x07; // 375000 
 
 	//Sanity check and abort to prevent miner thread from being created.
-	if (info->asic_type == BM1384) {
+	if (info->asic_type == BM1387) {
+		unsigned char buffer[] = { 0x58, 0x09, 0x00, 0x1C, 0x00, 0x20, 0x07, 0x00, 0x19 };
+		info->bauddiv = 0x01; // 1.5Mbps baud.
+		buffer[6] = info->bauddiv;
+		compac_send(compac, (char *)buffer, sizeof(buffer), 8 * sizeof(buffer) - 8);
+		cgsleep_ms(1);
+		usb_transfer(compac, FTDI_TYPE_OUT, FTDI_REQUEST_BAUD, (info->bauddiv + 1), (FTDI_INDEX_BAUD_BTS & 0xff00) | info->interface, C_SETBAUD);
+		cgsleep_ms(1);
+
+		// Ping Micro
+		if (info->asic_type == BM1387 && 1) {
+			info->vcore = bound(opt_gekko_gsh_vcore, 300, 810);
+			info->micro_found = 1;
+			if (!compac_micro_send(compac, M1_GET_TEMP, 0x00, 0x00)) {
+				info->micro_found = 0;
+				applog(LOG_WARNING, "%s %d: micro not found : dummy mode", compac->drv->name, compac->device_id);
+			} else {
+				uint8_t vcc = (info->vcore / 1000.0 - 0.3) / 0.002;
+				applog(LOG_WARNING, "%s %d: requesting vcore of %dmV (%x)", compac->drv->name, compac->device_id, info->vcore, vcc);
+				compac_micro_send(compac, M2_SET_VCORE, 0x00, vcc);   // Default 400mV
+			}
+		}
+	}
+	if (info->asic_type == BM1387) {
+		unsigned char buffer[] = {0x54, 0x05, 0x00, 0x00, 0x00};
+		compac_send(compac, (char *)buffer, sizeof(buffer), 8 * sizeof(buffer) - 8);
+		compac_send(compac, (char *)buffer, sizeof(buffer), 8 * sizeof(buffer) - 8);
+	} else if (info->asic_type == BM1384) {
 		unsigned char buffer[] = {0x84, 0x00, 0x00, 0x00};
 		compac_send(compac, (char *)buffer, sizeof(buffer), 8 * sizeof(buffer) - 5);
 		compac_send(compac, (char *)buffer, sizeof(buffer), 8 * sizeof(buffer) - 5);
-		miner_ok = false;
-		while (read_bytes) {
-			memset(info->rx, 0, info->rx_len);
-			usb_read_timeout(compac, (char *)info->rx, info->rx_len, &read_bytes, 200, C_GETRESULTS);
-			if (read_bytes > 0 && info->rx[0] == 0x13) {
-				miner_ok = true;
-			}
+	}
+
+	miner_ok = false;
+	while (read_bytes) {
+		memset(info->rx, 0, info->rx_len);
+		usb_read_timeout(compac, (char *)info->rx, info->rx_len, &read_bytes, 200, C_GETRESULTS);
+		if (read_bytes > 0 && info->rx[0] == 0x13) {
+			dumpbuffer(compac, LOG_INFO, "RX", info->rx, read_bytes);
+			miner_ok = true;
 		}
 	}
 
 	if (!miner_ok) {
 		applog(LOG_WARNING, "%s %d: found 0 chip(s)", compac->drv->name, compac->device_id);
 		if (info->ident != IDENT_BSD && info->ident != IDENT_GSD) {
-			usb_nodev(compac);
+			//usb_nodev(compac);
 		} else {
 			//DOA.   Don't bother retyring, will just waste resources.
 			compac->deven = DEV_DISABLED;
 		}
 	}
-
-	return true;
-}
-
-static bool compac_init(struct thr_info *thr)
-{
-	struct cgpu_info *compac = thr->cgpu;
-	struct COMPAC_INFO *info = compac->device_data;
-
-	info->mining_state = MINER_INIT;
-	info->prev_nonce = 0;
-
-	cgtime(&info->last_write_error);
-	cgtime(&info->last_frequency_adjust);
-	cgtime(&info->last_frequency_ping);
-	cgtime(&info->last_scanhash);
-	cgtime(&info->last_task);
-	cgtime(&info->start_time);
-
-	switch (info->ident) {
-		case IDENT_BSC:
-		case IDENT_GSC:
-			info->frequency_requested = opt_gekko_gsc_freq;
-			info->frequency_start = info->frequency_requested;
-			break;
-		case IDENT_BSD:
-		case IDENT_GSD:
-			info->frequency_requested = opt_gekko_gsd_freq;
-			info->frequency_start = opt_gekko_start_freq;
-			break;
-		case IDENT_BSE:
-		case IDENT_GSE:
-			info->frequency_requested = opt_gekko_gse_freq;
-			info->frequency_start = opt_gekko_start_freq;
-			break;
-		default:
-			info->frequency_requested = 200;
-			info->frequency_start = info->frequency_requested;
-			break;
-	}
-	info->frequency_requested = ceil(100 * (info->frequency_requested) / 625.0) * 6.25;
-	info->frequency_start = ceil(100 * (info->frequency_start) / 625.0) * 6.25;
-
-	pthread_mutex_init(&info->lock, NULL);
-
-	if (thr_info_create(&(info->rthr), NULL, compac_listen, (void *)compac)) {
-		applog(LOG_ERR, "%s-%i: thread create failed", compac->drv->name, compac->device_id);
-		return false;
-	}
-	pthread_detach(info->rthr.pth);
 
 	return true;
 }
@@ -671,10 +919,18 @@ static void compac_statline(char *buf, size_t bufsiz, struct cgpu_info *compac)
 	if (info->chips == 0) {
 		return;
 	}
-	if (opt_log_output) {
-		tailsprintf(buf, bufsiz, "BM1384:%i %.2fMHz (%d/%d/%d/%d)", info->chips, info->frequency, info->scanhash_ms, info->task_ms, info->fullscan_ms, compac->hw_errors);
+	if (info->asic_type == BM1387) {
+		if (info->micro_found) {
+			tailsprintf(buf, bufsiz, "BM1387:%i %.2fMHz (%d/%d/%d/%d/%.0fF)", info->chips, info->frequency, info->scanhash_ms, info->task_ms, info->fullscan_ms, compac->hw_errors, info->micro_temp);
+		} else {
+			tailsprintf(buf, bufsiz, "BM1387:%i %.2fMHz (%d/%d/%d/%d)", info->chips, info->frequency, info->scanhash_ms, info->task_ms, info->fullscan_ms, compac->hw_errors);
+		}
 	} else {
-		tailsprintf(buf, bufsiz, "BM1384:%i %.2fMHz HW:%d", info->chips, info->frequency_requested, compac->hw_errors);
+		if (opt_log_output) {
+			tailsprintf(buf, bufsiz, "BM1384:%i %.2fMHz (%d/%d/%d/%d)", info->chips, info->frequency, info->scanhash_ms, info->task_ms, info->fullscan_ms, compac->hw_errors);
+		} else {
+			tailsprintf(buf, bufsiz, "BM1384:%i %.2fMHz HW:%d", info->chips, info->frequency_requested, compac->hw_errors);
+		}
 	}
 }
 
@@ -684,7 +940,9 @@ static struct api_data *compac_api_stats(struct cgpu_info *compac)
 	struct api_data *root = NULL;
 
 	root = api_add_int(root, "Nonces", &info->nonces, false);
-	//root = api_add_int(root, "Accepted", &info->accepted, false);
+	root = api_add_int(root, "Accepted", &info->accepted, false);
+
+	//root = api_add_temp(root, "Temp", &info->micro_temp, false);
 
 	return root;
 }
@@ -693,11 +951,15 @@ static void compac_shutdown(struct thr_info *thr)
 {
 	struct cgpu_info *compac = thr->cgpu;
 	struct COMPAC_INFO *info = compac->device_data;
-	if (info->asic_type == BM1384 && info->frequency != 100) {
+	if (info->asic_type == BM1387) {
+		compac_micro_send(compac, M2_SET_VCORE, 0x00, 0x00);   // 300mV
+		compac_toggle_reset(compac);
+	} else if (info->asic_type == BM1384 && info->frequency != 100) {
 		compac_set_frequency(compac, 100);
 	}
 	info->mining_state = MINER_SHUTDOWN;
-	usleep(200); // Let threads close.
+	pthread_join(info->rthr.pth, NULL); // Let thread close.
+	PTH(thr) = 0L;
 }
 
 uint64_t bound(uint64_t value, uint64_t lower_bound, uint64_t upper_bound)

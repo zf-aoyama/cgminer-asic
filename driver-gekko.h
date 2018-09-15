@@ -16,7 +16,27 @@ enum miner_state {
 };
 
 enum miner_asic {
-	BM1384 = 1
+	BM1384 = 1,
+	BM1387
+};
+
+enum micro_command {
+	M1_GET_FAN    = (0x00 << 3),
+	M1_GET_RPM    = (0x01 << 3),
+	M1_GET_VIN    = (0x02 << 3),
+	M1_GET_IIN    = (0x03 << 3),
+	M1_GET_TEMP   = (0x04 << 3),
+	M1_GET_VNODE0 = (0x05 << 3),
+
+	M1_CLR_BEN    = (0x08 << 3),
+	M1_SET_BEN    = (0x09 << 3),
+	M1_CLR_LED    = (0x0A << 3),
+	M1_SET_LED    = (0x0B << 3),
+	M1_CLR_RST    = (0x0C << 3),
+	M1_SET_RST    = (0x0D << 3),
+
+	M2_SET_FAN    = (0x18 << 3),
+	M2_SET_VCORE  = (0x1C << 3)
 };
 
 struct COMPAC_INFO {
@@ -29,10 +49,13 @@ struct COMPAC_INFO {
 	struct thr_info xthr;            // Unplug Monitor Thread
 
 	pthread_mutex_t lock;        // Mutex
+	pthread_mutex_t wlock;       // Mutex Serialize Writes
 
 	float frequency;             // Chip Frequency
 	float frequency_requested;   // Requested Frequency
 	float frequency_start;       // Starting Frequency
+
+	float micro_temp;            // Micro Reported Temp
 
 	uint32_t scanhash_ms;        // Avg time(ms) inside scanhash loop
 	uint32_t task_ms;            // Avg time(ms) between task sent to device
@@ -49,7 +72,10 @@ struct COMPAC_INFO {
 	int nonceless;               // Tasks sent.  Resets when nonce is found.
 	int nonces;                  // Nonces found
 	int zero_check;              // Received nonces from zero work
+	int vcore;                   // Core voltage
+	int micro_found;             // Found a micro to communicate with
 
+	uint32_t bauddiv;            // Baudrate divider
 	uint32_t chips;              // Stores number of chips found
 	uint32_t cores;              // Stores number of core per chp
 	uint32_t difficulty;         // For computing hashrate
@@ -73,6 +99,7 @@ struct COMPAC_INFO {
 	struct timeval last_frequency_ping;     // Last time of frequency poll
 	struct timeval last_frequency_report;   // Last change of frequency report
 	struct timeval last_chain_inactive;     // Last sent chain inactive
+	struct timeval last_micro_ping;         // Last time of micro controller poll
 	struct timeval last_write_error;        // Last usb write error message
 
 	unsigned char task[64];                 // Task transmit buffer

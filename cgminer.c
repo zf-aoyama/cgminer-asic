@@ -281,6 +281,8 @@ int opt_bet_clk = 0;
 float opt_gekko_gsc_freq = 150;
 float opt_gekko_gsd_freq = 100;
 float opt_gekko_gse_freq = 150;
+int opt_gekko_gsh_freq = 200;
+int opt_gekko_gsh_vcore = 400;
 int opt_gekko_start_freq = 100;
 int opt_gekko_step_freq = 25;
 int opt_gekko_step_delay = 15;
@@ -1707,6 +1709,12 @@ static struct opt_table opt_config_table[] = {
 	OPT_WITH_ARG("--gekko-compac-freq",
 		     set_float_0_to_500, opt_show_floatval, &opt_gekko_gsc_freq,
 		     "Set GekkoScience Compac BM1384 frequency in MHz, range 6.25-500"),
+	OPT_WITH_ARG("--gekko-newpac-freq",
+		     set_int_0_to_9999, opt_show_intval, &opt_gekko_gsh_freq,
+		     "Set GekkoScience NewPac BM1387 frequency in MHz, range 100-900"),
+	OPT_WITH_ARG("--gekko-newpac-vcore",
+		     set_int_0_to_9999, opt_show_intval, &opt_gekko_gsh_vcore,
+		     "Set GekkoScience NewPac BM1387 VCORE in mV, range 300-810"),
 	OPT_WITH_ARG("--gekko-start-freq",
 		     set_int_0_to_9999, opt_show_intval, &opt_gekko_start_freq,
                      "Ramp start frequency MHz 25-500"),
