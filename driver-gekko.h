@@ -12,7 +12,8 @@ enum miner_state {
 	MINER_MINING,
 	MINER_MINING_DUPS,
 	MINER_SHUTDOWN,
-	MINER_SHUTDOWN_OK
+	MINER_SHUTDOWN_OK,
+	MINER_RESET
 };
 
 enum miner_asic {
@@ -66,6 +67,7 @@ struct COMPAC_INFO {
 	uint32_t prev_nonce;         // Last nonce found
 
 	int failing;                 // Flag failing sticks
+	int fail_count;              // Track failures.
 	int accepted;                // Nonces accepted
 	int dups;                    // Duplicates found
 	int interface;               // USB interface
@@ -92,6 +94,7 @@ struct COMPAC_INFO {
 
 	struct timeval start_time;              // Device startup time
 	struct timeval last_scanhash;           // Last time inside scanhash loop
+	struct timeval last_reset;              // Last time reset was triggered
 	struct timeval last_task;               // Last time work was sent
 	struct timeval last_nonce;              // Last time nonce was found
 	struct timeval last_hwerror;            // Last time hw error was detected
