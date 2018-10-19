@@ -179,7 +179,7 @@ static void compac_set_frequency(struct cgpu_info *compac, float frequency)
 
 	if (info->asic_type == BM1387) {
 		unsigned char buffer[] = {0x58, 0x09, 0x00, 0x0C, 0x00, 0x50, 0x02, 0x41, 0x00};   //250MHz -- osc of 25MHz
-		frequency = bound(frequency, 100, 900);
+		frequency = bound(frequency, 50, 900);
 		frequency = ceil(100 * (frequency) / 625.0) * 6.25;
 
 		if (frequency < 400) {
@@ -607,8 +607,8 @@ static int64_t compac_scanwork(struct thr_info *thr)
 		case MINER_CHIP_COUNT:
 			if (ms_tdiff(&now, &info->last_reset) > 5000) {
 				applog(LOG_WARNING, "%s %d: found 0 chip(s)", compac->drv->name, compac->device_id);
-				usb_nodev(compac);
-				return -1;
+                info->mining_state = MINER_RESET;
+                return 0;
 			}
 			cgsleep_ms(20);
 			break;
@@ -682,17 +682,17 @@ static int64_t compac_scanwork(struct thr_info *thr)
 
 						hashrate_1m = (double)compac->rolling1 * 1000000ull;
 						hashrate_5m = (double)compac->rolling5 * 1000000ull;
-						if ((hashrate_1m < (0.33 * info->hashrate)) && ms_tdiff(&now, &info->start_time) > (3 * 60 * 1000)) {
+						if ((hashrate_1m < (0.75 * info->hashrate)) && ms_tdiff(&now, &info->start_time) > (3 * 60 * 1000)) {
 							applog(LOG_WARNING, "%" PRIu64 " : %" PRIu64 " : %" PRIu64, hashrate_1m, hashrate_5m, info->hashrate);
 							applog(LOG_WARNING,"%s %d: unhealthy miner", compac->drv->name, compac->device_id);
-							usb_nodev(compac);
-							return -1;
+                            info->mining_state = MINER_RESET;
+                            return 0;
 						}
 
 						if (ms_tdiff(&now, &info->last_frequency_report) > (30 + 7500 * 3)) {
 							applog(LOG_WARNING,"%s %d: asic(s) went offline", compac->drv->name, compac->device_id);
-							usb_nodev(compac);
-							return -1;
+                            info->mining_state = MINER_RESET;
+                            return 0;
 						}
 					}
 				}
@@ -767,7 +767,10 @@ static int64_t compac_scanwork(struct thr_info *thr)
 
 				info->fail_count++;
 				info->mining_state = MINER_INIT;
-			}
+			} else {
+                usb_nodev(compac);
+                return -1;
+            }
 			break;
 		case MINER_MINING_DUPS:
 			info->mining_state = MINER_MINING;
@@ -933,9 +936,10 @@ static bool compac_prepare(struct thr_info *thr)
 
 		if (!miner_ok) {
 			applog(LOG_WARNING, "%s %d: found 0 chip(s)", compac->drv->name, compac->device_id);
-			if (info->ident != IDENT_BSD || info->ident != IDENT_GSD) {
-				//2Pac - DOA.   Don't bother retyring, will just waste resources.
+			if (info->ident == IDENT_BSD || info->ident == IDENT_GSD) {
+				//Don't bother retyring, will just waste resources.
 				compac->deven = DEV_DISABLED;
+				return false;
 			} else {
 				//usb_nodev(compac);
 			}

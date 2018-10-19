@@ -1711,7 +1711,7 @@ static struct opt_table opt_config_table[] = {
 		     "Set GekkoScience Compac BM1384 frequency in MHz, range 6.25-500"),
 	OPT_WITH_ARG("--gekko-newpac-freq",
 		     set_int_0_to_9999, opt_show_intval, &opt_gekko_gsh_freq,
-		     "Set GekkoScience NewPac BM1387 frequency in MHz, range 100-900"),
+		     "Set GekkoScience NewPac BM1387 frequency in MHz, range 50-900"),
 	OPT_WITH_ARG("--gekko-newpac-vcore",
 		     set_int_0_to_9999, opt_show_intval, &opt_gekko_gsh_vcore,
 		     "Set GekkoScience NewPac BM1387 VCORE in mV, range 300-810"),
