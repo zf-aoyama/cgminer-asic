@@ -4,6 +4,8 @@
 
 #ifdef WIN32
 #define thread_yield() sched_yield()
+#elif defined __APPLE__
+#define thread_yield() sched_yield()
 #else
 #define thread_yield() pthread_yield(NULL)
 #endif
