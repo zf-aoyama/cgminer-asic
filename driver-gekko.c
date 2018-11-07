@@ -439,7 +439,7 @@ static void *compac_listen(void *object)
 					break;
 				case MINER_MINING:
 					if (!cmd_resp) {
-						pthread_yield(NULL);
+						thread_yield();
 						mutex_lock(&info->lock);
 						info->hashes += compac_check_nonce(compac);
 						mutex_unlock(&info->lock);

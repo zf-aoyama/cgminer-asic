@@ -2,6 +2,12 @@
 #include "miner.h"
 #include "usbutils.h"
 
+#ifdef WIN32
+#define thread_yield() sched_yield()
+#else
+#define thread_yield() pthread_yield(NULL)
+#endif
+
 enum miner_state {
 	MINER_INIT = 1,
 	MINER_CHIP_COUNT,
