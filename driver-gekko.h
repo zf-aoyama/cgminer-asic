@@ -55,6 +55,7 @@ struct COMPAC_INFO {
 	float frequency;             // Chip Frequency
 	float frequency_requested;   // Requested Frequency
 	float frequency_start;       // Starting Frequency
+	float healthy;               // Lower percentile before tagging asic unhealthy
 
 	float micro_temp;            // Micro Reported Temp
 
@@ -105,13 +106,14 @@ struct COMPAC_INFO {
 	struct timeval last_micro_ping;         // Last time of micro controller poll
 	struct timeval last_write_error;        // Last usb write error message
 
-	unsigned char task[64];                 // Task transmit buffer
-	unsigned char cmd[32];                  // Command transmit buffer
-	unsigned char rx[32];                   // Receive buffer
-	unsigned char tx[32];                   // Transmit buffer
-
+	bool active_work[0x7F];                 // Tag good and stale work
 	struct work *work[0x7F];                // Work ring buffer
 
+	unsigned char task[0xFF];               // Task transmit buffer
+	unsigned char cmd[0xFF];                // Command transmit buffer
+	unsigned char rx[0xFF];                 // Receive buffer
+	unsigned char tx[0xFF];                 // Transmit buffer
+	unsigned char end[1024];                // buffer overrun test
 };
 
 void stuff_lsb(unsigned char *dst, uint32_t x);

@@ -278,6 +278,11 @@ static char *opt_set_avalonm_freq;
 int opt_bet_clk = 0;
 #endif
 #ifdef USE_GEKKO
+bool opt_gekko_boost = 0;
+bool opt_gekko_gsc_detect = 0;
+bool opt_gekko_gsd_detect = 0;
+bool opt_gekko_gse_detect = 0;
+bool opt_gekko_gsh_detect = 0;
 float opt_gekko_gsc_freq = 150;
 float opt_gekko_gsd_freq = 100;
 float opt_gekko_gse_freq = 150;
@@ -1700,6 +1705,21 @@ static struct opt_table opt_config_table[] = {
                      "Set Block Erupter clock"),
 #endif
 #ifdef USE_GEKKO
+	OPT_WITHOUT_ARG("--gekko-compac-detect",
+			 opt_set_bool, &opt_gekko_gsc_detect,
+			 "Detect GekkoScience Compac BM1384"),
+	OPT_WITHOUT_ARG("--gekko-2pac-detect",
+			 opt_set_bool, &opt_gekko_gsd_detect,
+			 "Detect GekkoScience 2Pac BM1384"),
+	OPT_WITHOUT_ARG("--gekko-terminus-detect",
+			 opt_set_bool, &opt_gekko_gse_detect,
+			 "Detect GekkoScience Terminus BM1384"),
+	OPT_WITHOUT_ARG("--gekko-newpac-detect",
+			 opt_set_bool, &opt_gekko_gsh_detect,
+			 "Detect GekkoScience NewPac BM1387"),
+	OPT_WITHOUT_ARG("--gekko-newpac-boost",
+			 opt_set_bool, &opt_gekko_boost,
+			 "Enable GekkoScience NewPac AsicBoost"),
 	OPT_WITH_ARG("--gekko-terminus-freq",
 		     set_float_0_to_500, opt_show_floatval, &opt_gekko_gse_freq,
 		     "Set GekkoScience Terminus BM1384 frequency in MHz, range 6.25-500"),

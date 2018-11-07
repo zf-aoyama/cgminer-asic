@@ -1037,6 +1037,11 @@ extern char *opt_avalon_options;
 extern char *opt_bitburner_fury_options;
 #endif
 #ifdef USE_GEKKO
+extern bool opt_gekko_boost;
+extern bool opt_gekko_gsc_detect;
+extern bool opt_gekko_gsd_detect;
+extern bool opt_gekko_gse_detect;
+extern bool opt_gekko_gsh_detect;
 extern float opt_gekko_gsc_freq;
 extern float opt_gekko_gsd_freq;
 extern float opt_gekko_gse_freq;

@@ -2197,6 +2197,11 @@ static bool configure_stratum_mining(struct pool *pool)
 	json_t *response, *value, *res_val, *err_val;
 	json_error_t err;
 
+#ifdef USE_GEKKO
+	if (!opt_gekko_boost)
+		return true;
+#endif
+
 	snprintf(s, RBUFSIZE,
 		 "{\"id\": %d, \"method\": \"mining.configure\", \"params\": "
 		 "[[\""STRATUM_VERSION_ROLLING"\"], "
