@@ -143,6 +143,9 @@ void cgtimer_time(cgtimer_t *ts_start);
 #ifdef WIN32
 void cgsleep_ms_r(cgtimer_t *ts_start, int ms);
 void cgsleep_us_r(cgtimer_t *ts_start, int64_t us);
+#elif defined __APPLE__
+void cgsleep_ms_r(cgtimer_t *ts_start, int ms);
+void cgsleep_us_r(cgtimer_t *ts_start, int64_t us);
 #else /* WIN32 */
 int cgsleep_ms_r(cgtimer_t *ts_start, int ms);
 int64_t cgsleep_us_r(cgtimer_t *ts_start, int64_t us);
