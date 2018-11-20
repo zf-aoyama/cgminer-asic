@@ -2,9 +2,7 @@
 #include "miner.h"
 #include "usbutils.h"
 
-#ifdef WIN32
-#define thread_yield() sched_yield()
-#elif defined __APPLE__
+#if defined(WIN32) || defined(__APPLE__)
 #define thread_yield() sched_yield()
 #else
 #define thread_yield() pthread_yield(NULL)

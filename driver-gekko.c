@@ -27,12 +27,12 @@ uint32_t bmcrc(unsigned char *ptr, uint32_t len)
 void dumpbuffer(struct cgpu_info *compac, int LOG_LEVEL, char *note, unsigned char *ptr, uint32_t len)
 {
 	struct COMPAC_INFO *info = compac->device_data;
-	char str[256];
+	char str[1024];
 
 	const char * hex = "0123456789ABCDEF";
 	char * pout = str;
 	int i = 0;
-	for(; i < sizeof(str) && i < len - 1; ++i){
+	for(; i < 0xFF && i < len - 1; ++i){
 		*pout++ = hex[(*ptr>>4)&0xF];
 		*pout++ = hex[(*ptr++)&0xF];
 		*pout++ = ':';
@@ -384,7 +384,7 @@ static void *compac_listen(void *object)
 
 	while (info->mining_state != MINER_SHUTDOWN) {
 		memset(info->rx, 0, info->rx_len);
-		err = usb_read_timeout(compac, (char *)info->rx, info->rx_len, &read_bytes, 100, C_GETRESULTS);
+		err = usb_read_timeout(compac, (char *)info->rx, info->rx_len, &read_bytes, 50, C_GETRESULTS);
 		cgtime(&now);
 
 		if (read_bytes > 0) {
@@ -683,7 +683,7 @@ static int64_t compac_scanwork(struct thr_info *thr)
 				info->update_work = 0;
 
 				if (info->asic_type == BM1387 && ms_tdiff(&now, &info->start_time) > 30000) {
-					int max_nononce = 2000.0 * (200.0 / info->frequency_requested);
+					int max_nononce = 3000.0 * (200.0 / info->frequency_requested);
 					if (ms_tdiff(&now, &info->last_nonce) > max_nononce) {
 						applog(LOG_WARNING,"%s %d: missing nonces", compac->drv->name, compac->device_id);
 						info->mining_state = MINER_RESET;
@@ -797,6 +797,9 @@ static int64_t compac_scanwork(struct thr_info *thr)
 				compac_prepare(thr);
 
 				info->fail_count++;
+				if (info->fail_count % 5 == 4) {
+					info->ramping = 0;
+				}
 				info->mining_state = MINER_INIT;
 			} else {
 				usb_nodev(compac);
@@ -983,7 +986,7 @@ static bool compac_prepare(struct thr_info *thr)
 		miner_ok = false;
 		while (read_bytes) {
 			memset(info->rx, 0, info->rx_len);
-			usb_read_timeout(compac, (char *)info->rx, info->rx_len, &read_bytes, 200, C_GETRESULTS);
+			usb_read_timeout(compac, (char *)info->rx, info->rx_len, &read_bytes, 50, C_GETRESULTS);
 			if (read_bytes > 0 && info->rx[0] == 0x13) {
 				dumpbuffer(compac, LOG_INFO, "RX", info->rx, read_bytes);
 				miner_ok = true;
