@@ -53,7 +53,7 @@ struct COMPAC_INFO {
 	enum miner_asic asic_type;       // ASIC Type
 	struct thr_info *thr;            // Running Thread
 	struct thr_info rthr;            // Listening Thread
-	struct thr_info xthr;            // Unplug Monitor Thread
+	struct thr_info wthr;            // Miner Work Thread
 
 	pthread_mutex_t lock;        // Mutex
 	pthread_mutex_t wlock;       // Mutex Serialize Writes
@@ -84,6 +84,8 @@ struct COMPAC_INFO {
 	int vcore;                   // Core voltage
 	int micro_found;             // Found a micro to communicate with
 
+	bool vmask;                  // Current pool's vmask
+
 	uint32_t bauddiv;            // Baudrate divider
 	uint32_t chips;              // Stores number of chips found
 	uint32_t cores;              // Stores number of core per chp
@@ -100,6 +102,7 @@ struct COMPAC_INFO {
 	uint32_t update_work;        // Notification of work update
 
 	struct timeval start_time;              // Device startup time
+	struct timeval monitor_time;            // Health check reference point
 	struct timeval last_scanhash;           // Last time inside scanhash loop
 	struct timeval last_reset;              // Last time reset was triggered
 	struct timeval last_task;               // Last time work was sent
