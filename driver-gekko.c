@@ -615,7 +615,7 @@ static void *compac_listen(void *object)
 					applog(LOG_WARNING,"%s %d: bad frequency", compac->drv->name, compac->device_id);
 				} else {
 					if (info->asic_type == BM1387) {
-						frequency = 25 * info->rx[1] / (info->rx[2] * (info->rx[3] >> 4) * (info->rx[3] & 0x0f));
+						frequency = 25.0 * info->rx[1] / (info->rx[2] * (info->rx[3] >> 4) * (info->rx[3] & 0x0f));
 					} else if (info->asic_type == BM1384) {
 						frequency = (info->rx[1] + 1) * 6.25 / (1 + info->rx[2] & 0x0f) * pow(2, (3 - info->rx[3])) + ((info->rx[2] >> 4) * 6.25);
 					}
