@@ -8,6 +8,9 @@
 #define thread_yield() pthread_yield(NULL)
 #endif
 
+#define JOB_MAX 0x7F
+#define BUFFER_MAX 0xFF
+
 enum miner_state {
 	MINER_INIT = 1,
 	MINER_CHIP_COUNT,
@@ -65,7 +68,7 @@ struct COMPAC_INFO {
 
 	float micro_temp;            // Micro Reported Temp
 
-	uint32_t scanhash_ms;        // Avg time(ms) inside scanhash loop
+	uint32_t scanhash_ms;        // Sleep time inside scanhash loop
 	uint32_t task_ms;            // Avg time(ms) between task sent to device
 	uint32_t fullscan_ms;        // Estimated time(ms) for full nonce range
 	uint64_t hashrate;           // Estimated hashrate = cores x chips x frequency
@@ -78,6 +81,7 @@ struct COMPAC_INFO {
 	int accepted;                // Nonces accepted
 	int dups;                    // Duplicates found
 	int interface;               // USB interface
+	int log_startup;             // LOG_WARNING first 15 seconds, then LOG_INFO
 	int nonceless;               // Tasks sent.  Resets when nonce is found.
 	int nonces;                  // Nonces found
 	int zero_check;              // Received nonces from zero work
@@ -115,13 +119,13 @@ struct COMPAC_INFO {
 	struct timeval last_micro_ping;         // Last time of micro controller poll
 	struct timeval last_write_error;        // Last usb write error message
 
-	bool active_work[0x7F];                 // Tag good and stale work
-	struct work *work[0x7F];                // Work ring buffer
+	bool active_work[JOB_MAX];              // Tag good and stale work
+	struct work *work[JOB_MAX];             // Work ring buffer
 
-	unsigned char task[0xFF];               // Task transmit buffer
-	unsigned char cmd[0xFF];                // Command transmit buffer
-	unsigned char rx[0xFF];                 // Receive buffer
-	unsigned char tx[0xFF];                 // Transmit buffer
+	unsigned char task[BUFFER_MAX];         // Task transmit buffer
+	unsigned char cmd[BUFFER_MAX];          // Command transmit buffer
+	unsigned char rx[BUFFER_MAX];           // Receive buffer
+	unsigned char tx[BUFFER_MAX];           // Transmit buffer
 	unsigned char end[1024];                // buffer overrun test
 };
 

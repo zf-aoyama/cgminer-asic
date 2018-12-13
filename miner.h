@@ -1037,6 +1037,7 @@ extern char *opt_avalon_options;
 extern char *opt_bitburner_fury_options;
 #endif
 #ifdef USE_GEKKO
+extern char *opt_gekko_serial;
 extern bool opt_gekko_boost;
 extern bool opt_gekko_gsc_detect;
 extern bool opt_gekko_gsd_detect;
