@@ -258,7 +258,10 @@ static uint64_t compac_check_nonce(struct cgpu_info *compac)
 		return hashes;
 	}
 
-	if (!info->active_work[job_id] && !info->active_work[job_id - 1] && !info->active_work[job_id - 2] && !info->active_work[job_id - 3]) {
+	if (!info->active_work[job_id] &&
+		!(job_id > 0 && info->active_work[job_id - 1]) &&
+		!(job_id > 1 && info->active_work[job_id - 2]) &&
+		!(job_id > 2 && info->active_work[job_id - 3])) {
 		return hashes;
 	}
 
