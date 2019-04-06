@@ -2,14 +2,14 @@
 #include "miner.h"
 #include "usbutils.h"
 
-#if defined(WIN32) || defined(__APPLE__)
-#define thread_yield() sched_yield()
-#else
-#define thread_yield() pthread_yield(NULL)
-#endif
-
 #define JOB_MAX 0x7F
 #define BUFFER_MAX 0xFF
+#define MS_SECOND_1  1000
+#define MS_SECOND_5  1000 * 5
+#define MS_SECOND_30 1000 * 30
+#define MS_MINUTE_1  1000 * 60
+#define MS_MINUTE_10 1000 * 60 * 10
+#define MS_HOUR_1    1000 * 60 * 60
 
 enum miner_state {
 	MINER_INIT = 1,
@@ -49,6 +49,25 @@ enum micro_command {
 	M2_SET_VCORE  = (0x1C << 3)
 };
 
+enum asic_state {
+	ASIC_HEALTHY = 0,
+	ASIC_HALFDEAD,
+	ASIC_ALMOST_DEAD,
+	ASIC_DEAD
+};
+
+struct ASIC_INFO {
+	struct timeval last_nonce;       // Last time nonce was found
+	float frequency;
+	float frequency_requested;       // Requested Frequency
+	enum asic_state state;
+	enum asic_state last_state;
+   	struct timeval state_change_time;  // Device startup time
+
+	uint32_t fullscan_ms;        // Estimated time(ms) for full nonce range
+	uint64_t hashrate;           // Estimated hashrate = cores x chips x frequency
+};
+
 struct COMPAC_INFO {
 
 	enum sub_ident ident;            // Miner identity
@@ -60,11 +79,20 @@ struct COMPAC_INFO {
 
 	pthread_mutex_t lock;        // Mutex
 	pthread_mutex_t wlock;       // Mutex Serialize Writes
+	pthread_mutex_t rlock;       // Mutex Serialize Reads
 
 	float frequency;             // Chip Frequency
 	float frequency_requested;   // Requested Frequency
 	float frequency_start;       // Starting Frequency
+	float frequency_default;     // ASIC Frequency on RESET
 	float healthy;               // Lower percentile before tagging asic unhealthy
+	float eff_gs;
+	float eff_tm;
+	float eff_li;
+	float eff_1m;
+	float eff_5m;
+	float eff_15;
+	float eff_wu;
 
 	float micro_temp;            // Micro Reported Temp
 
@@ -72,16 +100,17 @@ struct COMPAC_INFO {
 	uint32_t task_ms;            // Avg time(ms) between task sent to device
 	uint32_t fullscan_ms;        // Estimated time(ms) for full nonce range
 	uint64_t hashrate;           // Estimated hashrate = cores x chips x frequency
+	uint64_t busy_work;
 
 	uint64_t task_hcn;           // Hash Count Number - max nonce iter.
 	uint32_t prev_nonce;         // Last nonce found
 
 	int failing;                 // Flag failing sticks
 	int fail_count;              // Track failures.
+	int frequency_of;            // Frequency check token
 	int accepted;                // Nonces accepted
 	int dups;                    // Duplicates found
 	int interface;               // USB interface
-	int log_startup;             // LOG_WARNING first 15 seconds, then LOG_INFO
 	int nonceless;               // Tasks sent.  Resets when nonce is found.
 	int nonces;                  // Nonces found
 	int zero_check;              // Received nonces from zero work
@@ -89,11 +118,17 @@ struct COMPAC_INFO {
 	int micro_found;             // Found a micro to communicate with
 
 	bool vmask;                  // Current pool's vmask
+	bool boosted;                // Good nonce found for midstate2/3/4
+	bool report;
+
+	double wu;
+	double wu_max;               // Max WU since last frequency change
 
 	uint32_t bauddiv;            // Baudrate divider
 	uint32_t chips;              // Stores number of chips found
 	uint32_t cores;              // Stores number of core per chp
 	uint32_t difficulty;         // For computing hashrate
+	uint32_t expected_chips;     // Number of chips for device
 	uint64_t hashes;             // Hashes completed
 	uint32_t job_id;             // JobId incrementer
 	uint32_t low_hash;           // Tracks of low hashrate
@@ -118,7 +153,10 @@ struct COMPAC_INFO {
 	struct timeval last_chain_inactive;     // Last sent chain inactive
 	struct timeval last_micro_ping;         // Last time of micro controller poll
 	struct timeval last_write_error;        // Last usb write error message
+	struct timeval last_wu_increase;        // Last wu_max change
+	struct timeval last_pool_lost;          // Last time we lost pool
 
+	struct ASIC_INFO asics[64];
 	bool active_work[JOB_MAX];              // Tag good and stale work
 	struct work *work[JOB_MAX];             // Work ring buffer
 

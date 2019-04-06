@@ -223,7 +223,7 @@ bool use_curses = true;
 #else
 bool use_curses;
 #endif
-static bool opt_widescreen;
+bool opt_widescreen;
 static bool alt_status;
 static bool switch_status;
 static bool opt_submit_stale = true;
@@ -296,18 +296,22 @@ int opt_bet_clk = 0;
 #endif
 #ifdef USE_GEKKO
 char *opt_gekko_serial = NULL;
-bool opt_gekko_boost = 0;
+bool opt_gekko_noboost = 0;
 bool opt_gekko_gsc_detect = 0;
 bool opt_gekko_gsd_detect = 0;
 bool opt_gekko_gse_detect = 0;
 bool opt_gekko_gsh_detect = 0;
+bool opt_gekko_gsi_detect = 0;
 float opt_gekko_gsc_freq = 150;
 float opt_gekko_gsd_freq = 100;
 float opt_gekko_gse_freq = 150;
+float opt_gekko_tune_up = 92;
+float opt_gekko_tune_down = 95;
 int opt_gekko_gsh_freq = 100;
+int opt_gekko_gsi_freq = 100;
 int opt_gekko_gsh_vcore = 400;
 int opt_gekko_start_freq = 100;
-int opt_gekko_step_freq = 25;
+int opt_gekko_step_freq = 6;
 int opt_gekko_step_delay = 15;
 #endif
 #ifdef USE_HASHRATIO
@@ -1904,9 +1908,12 @@ static struct opt_table opt_config_table[] = {
 	OPT_WITHOUT_ARG("--gekko-newpac-detect",
 			 opt_set_bool, &opt_gekko_gsh_detect,
 			 "Detect GekkoScience NewPac BM1387"),
-	OPT_WITHOUT_ARG("--gekko-newpac-boost",
-			 opt_set_bool, &opt_gekko_boost,
-			 "Enable GekkoScience NewPac AsicBoost"),
+	OPT_WITHOUT_ARG("--gekko-r606-detect",
+			 opt_set_bool, &opt_gekko_gsi_detect,
+			 "Detect GekkoScience Terminus BM1387"),
+	OPT_WITHOUT_ARG("--gekko-noboost",
+			 opt_set_bool, &opt_gekko_noboost,
+			 "Disable GekkoScience NewPac/R606 AsicBoost"),
 	OPT_WITH_ARG("--gekko-terminus-freq",
 		     set_float_0_to_500, opt_show_floatval, &opt_gekko_gse_freq,
 		     "Set GekkoScience Terminus BM1384 frequency in MHz, range 6.25-500"),
@@ -1916,12 +1923,18 @@ static struct opt_table opt_config_table[] = {
 	OPT_WITH_ARG("--gekko-compac-freq",
 		     set_float_0_to_500, opt_show_floatval, &opt_gekko_gsc_freq,
 		     "Set GekkoScience Compac BM1384 frequency in MHz, range 6.25-500"),
+	OPT_WITH_ARG("--gekko-tune-down",
+		     set_float_0_to_500, opt_show_floatval, &opt_gekko_tune_down,
+		     "Set GekkoScience miner minimum hash quality, range 0-100"),
+	OPT_WITH_ARG("--gekko-tune-up",
+		     set_float_0_to_500, opt_show_floatval, &opt_gekko_tune_up,
+		     "Set GekkoScience miner ramping hash threshold, rante 0-99"),
 	OPT_WITH_ARG("--gekko-newpac-freq",
 		     set_int_0_to_9999, opt_show_intval, &opt_gekko_gsh_freq,
 		     "Set GekkoScience NewPac BM1387 frequency in MHz, range 50-900"),
-	OPT_WITH_ARG("--gekko-newpac-vcore",
-		     set_int_0_to_9999, opt_show_intval, &opt_gekko_gsh_vcore,
-		     "Set GekkoScience NewPac BM1387 VCORE in mV, range 300-810"),
+	OPT_WITH_ARG("--gekko-r606-freq",
+		     set_int_0_to_9999, opt_show_intval, &opt_gekko_gsi_freq,
+		     "Set GekkoScience Terminus R606 frequency in MHz, range 50-900"),
 	OPT_WITH_ARG("--gekko-start-freq",
 		     set_int_0_to_9999, opt_show_intval, &opt_gekko_start_freq,
                      "Ramp start frequency MHz 25-500"),
