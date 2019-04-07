@@ -113,6 +113,7 @@ struct COMPAC_INFO {
 	int interface;               // USB interface
 	int nonceless;               // Tasks sent.  Resets when nonce is found.
 	int nonces;                  // Nonces found
+	int nononce_reset;           // Count missing nonces
 	int zero_check;              // Received nonces from zero work
 	int vcore;                   // Core voltage
 	int micro_found;             // Found a micro to communicate with
