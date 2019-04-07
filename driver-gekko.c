@@ -185,7 +185,7 @@ static void compac_send_chain_inactive(struct cgpu_info *compac)
 		//compac_send(compac, (char *)buffer, sizeof(buffer), 8 * sizeof(buffer) - 5);
 	}
 
-	if (info->mining_state != MINER_MINING) {
+	if (info->mining_state == MINER_CHIP_COUNT_OK) {
 		applog(LOG_INFO, "%d: %s %d - open cores", compac->cgminer_id, compac->drv->name, compac->device_id);
 		info->zero_check = 0;
 		info->task_hcn = 0;
@@ -464,7 +464,7 @@ static uint64_t compac_check_nonce(struct cgpu_info *compac)
 		return hashes;
 	}
 
-	//work->device_diff = info->difficulty;
+	work->device_diff = info->difficulty;
 
 	if (submit_nonce(info->thr, work, nonce)) {
 		int asic_id = floor(info->rx[0] / (0x100 / info->chips));
@@ -983,8 +983,12 @@ static void *compac_listen(void *object)
 						info->mining_state = MINER_RESET;
 					} else {
 						applog(LOG_WARNING, "%d: %s %d - found %d chip(s)", compac->cgminer_id, compac->drv->name, compac->device_id, info->chips);
-						info->mining_state = MINER_CHIP_COUNT_OK;
-						(*init_count) = 0;
+						if (info->chips > 0) {
+							info->mining_state = MINER_CHIP_COUNT_OK;
+							(*init_count) = 0;
+						} else {
+							info->mining_state = MINER_RESET;
+						}
 					}
 					break;
 				default:
