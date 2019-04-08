@@ -9,6 +9,7 @@
 #define MS_SECOND_30 1000 * 30
 #define MS_MINUTE_1  1000 * 60
 #define MS_MINUTE_10 1000 * 60 * 10
+#define MS_MINUTE_30 1000 * 60 * 30
 #define MS_HOUR_1    1000 * 60 * 60
 
 enum miner_state {

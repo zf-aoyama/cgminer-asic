@@ -359,7 +359,7 @@ static void compac_toggle_reset(struct cgpu_info *compac)
 	struct COMPAC_INFO *info = compac->device_data;
 	unsigned short usb_val;
 
-	applog(LOG_WARNING,"%d: %s %d - Toggling ASIC nRST to reset", compac->cgminer_id, compac->drv->name, compac->device_id);
+	applog(LOG_INFO,"%d: %s %d - Toggling ASIC nRST to reset", compac->cgminer_id, compac->drv->name, compac->device_id);
 
 	usb_transfer(compac, FTDI_TYPE_OUT, FTDI_REQUEST_RESET, FTDI_VALUE_RESET, info->interface, C_RESET);
 	usb_transfer(compac, FTDI_TYPE_OUT, FTDI_REQUEST_DATA, FTDI_VALUE_DATA_BTS, info->interface, C_SETDATA);
@@ -636,6 +636,10 @@ static void *compac_mine(void *object)
 				}
 			}
 
+			if (ms_tdiff(&now, &info->last_frequency_adjust) > MS_HOUR_1) {
+				info->nononce_reset = 0;
+			}
+
 			if (ms_tdiff(&now, &info->monitor_time) > MS_SECOND_5 && ms_tdiff(&now, &info->last_frequency_adjust) > MS_SECOND_5) {
 				for (i = 0; i < info->chips; i++) {
 					struct ASIC_INFO *asic = &info->asics[i];
@@ -644,7 +648,11 @@ static void *compac_mine(void *object)
 						if (info->eff_wu > opt_gekko_tune_down && info->nononce_reset < 3) {
 							// High WU - give it some credit, retry at current target frequency
 						} else if (ms_tdiff(&now, &info->last_frequency_adjust) > MS_MINUTE_10) {
-							// Been running for 10 minutes, retry at current target frequency
+							// Been running for 10 minutes, possible plateau
+							if (info->frequency_requested > info->frequency) {
+								// Move requested frequency closer to plateau value
+								new_frequency = info->frequency + 6.25;
+							}
 						} else {
 							if (info->frequency_requested > info->frequency) {
 								// Set to current frequency
@@ -658,11 +666,10 @@ static void *compac_mine(void *object)
 						asic->state = ASIC_HALFDEAD;
 						cgtime(&asic->state_change_time);
 						cgtime(&info->monitor_time);
-						applog(LOG_WARNING,"%d: %s %d - missing nonces from chip[%d]", compac->cgminer_id, compac->drv->name, compac->device_id, i);
+						applog(LOG_INFO,"%d: %s %d - missing nonces from chip[%d]", compac->cgminer_id, compac->drv->name, compac->device_id, i);
 						if (new_frequency != info->frequency_requested) {
-							applog(LOG_WARNING,"%d: %s %d - target frequency %.2fMHz -> %.2fMHz", compac->cgminer_id, compac->drv->name, compac->device_id, info->frequency_requested, new_frequency);
+							applog(LOG_WARNING,"%d: %s %d - no nonce: target frequency %.2fMHz -> %.2fMHz", compac->cgminer_id, compac->drv->name, compac->device_id, info->frequency_requested, new_frequency);
 							info->frequency_requested = new_frequency;
-							info->nononce_reset = 0;
 							cgtime(&info->last_frequency_adjust);
 						}
 						info->nononce_reset++;
@@ -674,7 +681,7 @@ static void *compac_mine(void *object)
 
 			if (low_eff && ms_tdiff(&now, &info->last_frequency_adjust) > MS_MINUTE_10 && ms_tdiff(&now, &info->last_pool_lost) > MS_MINUTE_10) {
 				float new_frequency = info->frequency - 6.25;
-				applog(LOG_WARNING,"%d: %s %d - low eff: (1m)%.1f (5m)%.1f (15m)%.1f  - [%.1f]", compac->cgminer_id, compac->drv->name, compac->device_id, info->eff_1m, info->eff_5m, info->eff_15, opt_gekko_tune_down);
+				applog(LOG_WARNING,"%d: %s %d - low eff: (1m)%.1f (5m)%.1f (15m)%.1f (WU)%.1f  - [%.1f]", compac->cgminer_id, compac->drv->name, compac->device_id, info->eff_1m, info->eff_5m, info->eff_15, info->eff_wu, opt_gekko_tune_down);
 				applog(LOG_WARNING,"%d: %s %d - low eff: target frequency %.2fMHz -> %.2fMHz", compac->cgminer_id, compac->drv->name, compac->device_id, info->frequency_requested, new_frequency);
 				info->frequency_requested = new_frequency;
 				for (i = 0; i < info->chips; i++)
@@ -996,10 +1003,10 @@ static void *compac_listen(void *object)
 			switch (info->mining_state) {
 				case MINER_CHIP_COUNT_XX:
 					if (info->chips < info->expected_chips) {
-						applog(LOG_WARNING, "%d: %s %d - found %d/%d chip(s)", compac->cgminer_id, compac->drv->name, compac->device_id, info->chips, info->expected_chips);
+						applog(LOG_INFO, "%d: %s %d - found %d/%d chip(s)", compac->cgminer_id, compac->drv->name, compac->device_id, info->chips, info->expected_chips);
 						info->mining_state = MINER_RESET;
 					} else {
-						applog(LOG_WARNING, "%d: %s %d - found %d chip(s)", compac->cgminer_id, compac->drv->name, compac->device_id, info->chips);
+						applog(LOG_INFO, "%d: %s %d - found %d chip(s)", compac->cgminer_id, compac->drv->name, compac->device_id, info->chips);
 						if (info->chips > 0) {
 							info->mining_state = MINER_CHIP_COUNT_OK;
 							(*init_count) = 0;
@@ -1368,7 +1375,7 @@ static bool compac_prepare(struct thr_info *thr)
 	(*init_count)++;
 
 	if ((*init_count) > 1) {
-		applog(LOG_WARNING, "%d: %s %d - init_count %d", compac->cgminer_id, compac->drv->name, compac->device_id, *init_count);
+		applog(LOG_INFO, "%d: %s %d - init_count %d", compac->cgminer_id, compac->drv->name, compac->device_id, *init_count);
 	}
 
 	info->thr = thr;
