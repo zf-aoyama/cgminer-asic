@@ -677,7 +677,7 @@ static void *compac_mine(void *object)
 				}
 			}
 
-			if (low_eff && ms_tdiff(&now, &info->last_frequency_adjust) > MS_MINUTE_10 && ms_tdiff(&now, &info->last_wu_increase) > MS_MINUTE_30 && ms_tdiff(&now, &info->last_pool_lost) > MS_MINUTE_10) {
+			if (low_eff && ms_tdiff(&now, &info->last_frequency_adjust) > MS_HOUR_1 && ms_tdiff(&now, &info->last_wu_increase) > MS_MINUTE_30 && ms_tdiff(&now, &info->last_pool_lost) > MS_MINUTE_10) {
 				float new_frequency = info->frequency - 6.25;
 				applog(LOG_WARNING,"%d: %s %d - low eff: (1m)%.1f (5m)%.1f (15m)%.1f (WU)%.1f  - [%.1f]", compac->cgminer_id, compac->drv->name, compac->device_id, info->eff_1m, info->eff_5m, info->eff_15, info->eff_wu, opt_gekko_tune_down);
 				applog(LOG_WARNING,"%d: %s %d - low eff: target frequency %.2fMHz -> %.2fMHz", compac->cgminer_id, compac->drv->name, compac->device_id, info->frequency_requested, new_frequency);
