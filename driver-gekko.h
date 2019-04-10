@@ -82,10 +82,12 @@ struct COMPAC_INFO {
 	pthread_mutex_t wlock;       // Mutex Serialize Writes
 	pthread_mutex_t rlock;       // Mutex Serialize Reads
 
-	float frequency;             // Chip Frequency
+	float frequency;             // Chip Average Frequency
+	float frequency_default;     // ASIC Frequency on RESET
 	float frequency_requested;   // Requested Frequency
 	float frequency_start;       // Starting Frequency
-	float frequency_default;     // ASIC Frequency on RESET
+	float frequency_fail_high;   // Highest Frequency of Chip Failure
+	float frequency_fail_low;    // Lowest Frequency of Chip Failure
 	float healthy;               // Lower percentile before tagging asic unhealthy
 	float eff_gs;
 	float eff_tm;
