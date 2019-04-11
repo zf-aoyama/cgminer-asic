@@ -726,7 +726,7 @@ static void *compac_mine(void *object)
 
 				info->frequency_of--;
 
-				if (info->frequency_of == (info->chips - 1) && info->eff_gs >= opt_gekko_tune_up)
+				if (info->frequency_of == (info->chips - 1) && (info->eff_gs >= opt_gekko_tune_up || info->frequency < info->frequency_computed))
 					adjustable = 1;
 
 				if (info->frequency_of < 0) {
@@ -1537,19 +1537,19 @@ static void compac_statline(char *buf, size_t bufsiz, struct cgpu_info *compac)
 
 	if (info->asic_type == BM1387) {
 		if (info->micro_found) {
-			sprintf(asic_statline, "BM1387:%02d%-1s %.2fMHz P:%.2fMHz (%d/%d/%d/%.0fF)", info->chips, ab, info->frequency, info->frequency_computed, info->scanhash_ms, info->task_ms, info->fullscan_ms, info->micro_temp);
+			sprintf(asic_statline, "BM1387:%02d%-1s %.2fMHz T:%.2fMHz P:%.2fMHz (%d/%d/%d/%.0fF)", info->chips, ab, info->frequency, info->frequency_requested, info->frequency_computed, info->scanhash_ms, info->task_ms, info->fullscan_ms, info->micro_temp);
 		} else {
 			if (opt_log_output) {
-				sprintf(asic_statline, "BM1387:%02d%-1s %.2fMHz %s%-13s", info->chips, ab, info->frequency, info->frequency_computed, asic_stat, ms_stat);
+				sprintf(asic_statline, "BM1387:%02d%-1s %.2fMHz T:%.2fMHz P:%.2fMHz %s%-13s", info->chips, ab, info->frequency, info->frequency_requested, info->frequency_computed, asic_stat, ms_stat);
 			} else {
-				sprintf(asic_statline, "BM1387:%02d%-1s %.2fMHz P:%.2fMHz %s%s", info->chips, ab, info->frequency, info->frequency_computed, asic_stat, eff_stat);
+				sprintf(asic_statline, "BM1387:%02d%-1s %.2fMHz T:%.2fMHz P:%.2fMHz %s%s", info->chips, ab, info->frequency, info->frequency_requested, info->frequency_computed, asic_stat, eff_stat);
 			}
 		}
 	} else {
 		if (opt_log_output) {
-			sprintf(asic_statline, "BM1384:%02d  %.2fMHz P:%.2fMHz %s%-13s", info->chips, info->frequency, info->frequency_computed, asic_stat, ms_stat);
+			sprintf(asic_statline, "BM1384:%02d  %.2fMHz T:%.2fMHz P:%.2fMHz %s%-13s", info->chips, info->frequency, info->frequency_requested, info->frequency_computed, asic_stat, ms_stat);
 		} else {
-			sprintf(asic_statline, "BM1384:%02d  %.2fMHz P:%.2fMHz %s%s", info->chips, info->frequency, info->frequency_computed, asic_stat, eff_stat);
+			sprintf(asic_statline, "BM1384:%02d  %.2fMHz T:%.2fMHz P:%.2fMHz %s%s", info->chips, info->frequency, info->frequency_requested, info->frequency_computed, asic_stat, eff_stat);
 		}
 	}
 
