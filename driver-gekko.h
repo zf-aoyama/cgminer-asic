@@ -58,12 +58,14 @@ enum asic_state {
 };
 
 struct ASIC_INFO {
-	struct timeval last_nonce;       // Last time nonce was found
+	struct timeval last_nonce;              // Last time nonce was found
 	float frequency;
-	float frequency_requested;       // Requested Frequency
+	float frequency_requested;              // Requested Frequency
+	int dups;                               // Duplicate nonce counter
 	enum asic_state state;
 	enum asic_state last_state;
-   	struct timeval state_change_time;  // Device startup time
+	struct timeval state_change_time;       // Device startup time
+	struct timeval last_frequency_reply;    // Last time of frequency reply
 
 	uint32_t fullscan_ms;        // Estimated time(ms) for full nonce range
 	uint64_t hashrate;           // Estimated hashrate = cores x chips x frequency
@@ -88,6 +90,7 @@ struct COMPAC_INFO {
 	float frequency_start;       // Starting Frequency
 	float frequency_fail_high;   // Highest Frequency of Chip Failure
 	float frequency_fail_low;    // Lowest Frequency of Chip Failure
+	float frequency_computed;    // Highest hashrate seen as a frequency value
 	float healthy;               // Lower percentile before tagging asic unhealthy
 	float eff_gs;
 	float eff_tm;
@@ -147,6 +150,7 @@ struct COMPAC_INFO {
 	struct timeval start_time;              // Device startup time
 	struct timeval monitor_time;            // Health check reference point
 	struct timeval last_scanhash;           // Last time inside scanhash loop
+	struct timeval last_dup_fix;            // Last time nonce dup fix was attempted
 	struct timeval last_reset;              // Last time reset was triggered
 	struct timeval last_task;               // Last time work was sent
 	struct timeval last_nonce;              // Last time nonce was found
