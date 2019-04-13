@@ -155,6 +155,7 @@ struct COMPAC_INFO {
 	struct timeval last_task;               // Last time work was sent
 	struct timeval last_nonce;              // Last time nonce was found
 	struct timeval last_hwerror;            // Last time hw error was detected
+	struct timeval last_fast_forward;       // Last time of ramp jump to peak
 	struct timeval last_frequency_adjust;   // Last time of frequency adjust
 	struct timeval last_frequency_ping;     // Last time of frequency poll
 	struct timeval last_frequency_report;   // Last change of frequency report
