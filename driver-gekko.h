@@ -8,6 +8,8 @@
 #define MS_SECOND_5  1000 * 5
 #define MS_SECOND_30 1000 * 30
 #define MS_MINUTE_1  1000 * 60
+#define MS_MINUTE_2  1000 * 60 * 2
+#define MS_MINUTE_5  1000 * 60 * 5
 #define MS_MINUTE_10 1000 * 60 * 10
 #define MS_MINUTE_30 1000 * 60 * 30
 #define MS_HOUR_1    1000 * 60 * 60
@@ -66,8 +68,9 @@ struct ASIC_INFO {
 	enum asic_state last_state;
 	struct timeval state_change_time;       // Device startup time
 	struct timeval last_frequency_reply;    // Last time of frequency reply
-
+	uint32_t prev_nonce;         // Last nonce found
 	uint32_t fullscan_ms;        // Estimated time(ms) for full nonce range
+	uint32_t fullscan_us;        // Estimated time(us) for full nonce range
 	uint64_t hashrate;           // Estimated hashrate = cores x chips x frequency
 };
 
@@ -101,10 +104,12 @@ struct COMPAC_INFO {
 	float eff_wu;
 
 	float micro_temp;            // Micro Reported Temp
+	float wait_factor;           // Used to compute max_task_wait
 
 	uint32_t scanhash_ms;        // Sleep time inside scanhash loop
 	uint32_t task_ms;            // Avg time(ms) between task sent to device
 	uint32_t fullscan_ms;        // Estimated time(ms) for full nonce range
+	uint32_t fullscan_us;        // Estimated time(us) for full nonce range
 	uint64_t hashrate;           // Estimated hashrate = cores x chips x frequency
 	uint64_t busy_work;
 
@@ -140,6 +145,7 @@ struct COMPAC_INFO {
 	uint32_t job_id;             // JobId incrementer
 	uint32_t low_hash;           // Tracks of low hashrate
 	uint32_t max_job_id;         // JobId cap
+	uint64_t max_task_wait;      // Micro seconds to wait before next task is sent
 	uint32_t ramping;            // Ramping incrementer
 	uint32_t rx_len;             // rx length
 	uint32_t task_len;           // task length
@@ -149,8 +155,9 @@ struct COMPAC_INFO {
 
 	struct timeval start_time;              // Device startup time
 	struct timeval monitor_time;            // Health check reference point
+	struct timeval last_computed_increase;  // Last frequency computed change
 	struct timeval last_scanhash;           // Last time inside scanhash loop
-	struct timeval last_dup_fix;            // Last time nonce dup fix was attempted
+	struct timeval last_dup_time;           // Last time nonce dup detected was attempted
 	struct timeval last_reset;              // Last time reset was triggered
 	struct timeval last_task;               // Last time work was sent
 	struct timeval last_nonce;              // Last time nonce was found
