@@ -364,7 +364,7 @@ static void compac_toggle_reset(struct cgpu_info *compac)
 	struct COMPAC_INFO *info = compac->device_data;
 	unsigned short usb_val;
 
-	applog(LOG_INFO,"%d: %s %d - Toggling ASIC nRST to reset", compac->cgminer_id, compac->drv->name, compac->device_id);
+	applog(info->log_wide,"%d: %s %d - Toggling ASIC nRST to reset", compac->cgminer_id, compac->drv->name, compac->device_id);
 
 	usb_transfer(compac, FTDI_TYPE_OUT, FTDI_REQUEST_RESET, FTDI_VALUE_RESET, info->interface, C_RESET);
 	usb_transfer(compac, FTDI_TYPE_OUT, FTDI_REQUEST_DATA, FTDI_VALUE_DATA_BTS, info->interface, C_SETDATA);
@@ -427,12 +427,14 @@ static uint64_t compac_check_nonce(struct cgpu_info *compac)
 	if (nonce == asic->prev_nonce) {
 		applog(LOG_INFO, "%d: %s %d - Duplicate Nonce : %08x @ %02x [%02x %02x %02x %02x %02x %02x %02x]", compac->cgminer_id, compac->drv->name, compac->device_id, nonce, job_id,
 			info->rx[0], info->rx[1], info->rx[2], info->rx[3], info->rx[4], info->rx[5], info->rx[6]);
+#ifndef WIN32
 		info->dups++;
 		asic->dups++;
 		cgtime(&info->last_dup_time);
 		if (info->dups == 1) {
 			info->mining_state = MINER_MINING_DUPS;
 		}
+#endif
 		return hashes;
 	}
 
@@ -567,7 +569,6 @@ static void *compac_mine(void *object)
 
 	struct timeval now;
 	struct timeval last_frequency_report;
-	struct timeval last_eff_calculations = (struct timeval){0};
 
 	struct sched_param param;
 	int i, j, read_bytes, sleep_us, policy, ret_nice, ping_itr;
@@ -602,54 +603,65 @@ static void *compac_mine(void *object)
 
 			info->update_work = 0;
 
-			sleep_us = bound(ceil(info->max_task_wait/10.0), 1, (info->max_task_wait / 2));
+			sleep_us = bound(ceil(info->max_task_wait / 10), 1, 1000 * 1000);
 
-			if (ms_tdiff(&now, &last_eff_calculations) > MS_SECOND_1) {
-				// throttle everthing except work to once per second
+			dev_runtime = cgpu_runtime(compac);
+			wu = compac->diff1 / dev_runtime * 60;
 
-				dev_runtime = cgpu_runtime(compac);
-				wu = compac->diff1 / dev_runtime * 60;
-
-				if (wu > info->wu_max) {
-					info->wu_max = wu;
-					cgtime(&info->last_wu_increase);
-				}
-
-				hashrate_li = (double)compac->rolling * 1000000ull;
-				hashrate_1m = (double)compac->rolling1 * 1000000ull;
-				hashrate_5m = (double)compac->rolling5 * 1000000ull;
-				hashrate_15 = (double)compac->rolling15 * 1000000ull;
-				hashrate_tm = (double)compac->total_mhashes / dev_runtime * 1000000ull;;
-
-				info->eff_li = 100.0 * (1.0 * hashrate_li / info->hashrate);
-				info->eff_1m = 100.0 * (1.0 * hashrate_1m / info->hashrate);
-				info->eff_5m = 100.0 * (1.0 * hashrate_5m / info->hashrate);
-				info->eff_15 = 100.0 * (1.0 * hashrate_15 / info->hashrate);
-				info->eff_wu = 100.0 * (1.0 * wu / info->wu);
-				info->eff_tm = 100.0 * (1.0 * hashrate_tm / info->hashrate);
-
-				info->eff_li = (info->eff_li > 100) ? 100 : info->eff_li;
-				info->eff_1m = (info->eff_1m > 100) ? 100 : info->eff_1m;
-				info->eff_5m = (info->eff_5m > 100) ? 100 : info->eff_5m;
-				info->eff_15 = (info->eff_15 > 100) ? 100 : info->eff_15;
-				info->eff_wu = (info->eff_wu > 100) ? 100 : info->eff_wu;
-				info->eff_tm = (info->eff_tm > 100) ? 100 : info->eff_tm;
-
-				info->eff_gs = (((info->eff_tm > info->eff_1m) ? info->eff_tm : info->eff_1m) * 3 + info->eff_li) / 4;
-
-				//frequency_computed = ((hashrate_5m / 1000000.0) / info->cores) / info->chips;
-				frequency_computed = info->eff_gs / 100.0 * info->frequency;
-				if (frequency_computed > info->frequency_computed && frequency_computed < 900) {
-					info->frequency_computed = frequency_computed;
-					cgtime(&info->last_computed_increase);
-				}
-				if (info->eff_5m > 10.0 && info->eff_1m < opt_gekko_tune_down && info->eff_5m < opt_gekko_tune_down && info->eff_15 < opt_gekko_tune_down && info->eff_wu < opt_gekko_tune_down) {
-					low_eff = 1;
-				}
-				cgtime(&last_eff_calculations);
+			if (wu > info->wu_max) {
+				info->wu_max = wu;
+				cgtime(&info->last_wu_increase);
 			}
 
+			hashrate_li = (double)compac->rolling * 1000000ull;
+			hashrate_1m = (double)compac->rolling1 * 1000000ull;
+			hashrate_5m = (double)compac->rolling5 * 1000000ull;
+			hashrate_15 = (double)compac->rolling15 * 1000000ull;
+			hashrate_tm = (double)compac->total_mhashes / dev_runtime * 1000000ull;;
 
+			info->eff_li = 100.0 * (1.0 * hashrate_li / info->hashrate);
+			info->eff_1m = 100.0 * (1.0 * hashrate_1m / info->hashrate);
+			info->eff_5m = 100.0 * (1.0 * hashrate_5m / info->hashrate);
+			info->eff_15 = 100.0 * (1.0 * hashrate_15 / info->hashrate);
+			info->eff_wu = 100.0 * (1.0 * wu / info->wu);
+			info->eff_tm = 100.0 * (1.0 * hashrate_tm / info->hashrate);
+
+			info->eff_li = (info->eff_li > 100) ? 100 : info->eff_li;
+			info->eff_1m = (info->eff_1m > 100) ? 100 : info->eff_1m;
+			info->eff_5m = (info->eff_5m > 100) ? 100 : info->eff_5m;
+			info->eff_15 = (info->eff_15 > 100) ? 100 : info->eff_15;
+			info->eff_wu = (info->eff_wu > 100) ? 100 : info->eff_wu;
+			info->eff_tm = (info->eff_tm > 100) ? 100 : info->eff_tm;
+
+			info->eff_gs = (((info->eff_tm > info->eff_1m) ? info->eff_tm : info->eff_1m) * 3 + info->eff_li) / 4;
+
+			//frequency_computed = ((hashrate_5m / 1000000.0) / info->cores) / info->chips;
+			//frequency_computed = info->eff_gs / 100.0 * info->frequency;
+			frequency_computed = ((info->eff_tm > info->eff_5m) ? info->eff_tm : info->eff_5m) / 100.0 * info->frequency;
+			if (frequency_computed > info->frequency_computed && frequency_computed < 900) {
+				info->frequency_computed = frequency_computed;
+				cgtime(&info->last_computed_increase);
+			}
+			if (info->eff_5m > 10.0 && info->eff_1m < opt_gekko_tune_down && info->eff_5m < opt_gekko_tune_down && info->eff_15 < opt_gekko_tune_down && info->eff_wu < opt_gekko_tune_down) {
+				low_eff = 1;
+			}
+
+			// unhealthy mining condition
+			if (low_eff) {
+				// only respond when target and peak converges
+				if (ceil(100 * (info->frequency_requested) / 625.0) * 6.25 == ceil(100 * (info->frequency_computed) / 625.0) * 6.25) {
+					// throttle reaction to once per half hour
+					if (ms_tdiff(&now, &info->last_low_eff_reset) > MS_MINUTE_10) {
+						applog(info->log_wide,"%d: %s %d - low eff: (1m)%.1f (5m)%.1f (15m)%.1f (WU)%.1f  - [%.1f]", compac->cgminer_id, compac->drv->name, compac->device_id, info->eff_1m, info->eff_5m, info->eff_15, info->eff_wu, opt_gekko_tune_down);
+						info->low_eff_resets++;
+						info->mining_state = MINER_RESET;
+						cgtime(&info->last_low_eff_reset);
+						continue;
+					}
+				}
+			}
+
+			// search for plateau
 			if (ms_tdiff(&now, &info->monitor_time) > MS_SECOND_5 && ms_tdiff(&now, &info->last_frequency_adjust) > MS_SECOND_5) {
 				for (i = 0; i < info->chips; i++) {
 					struct ASIC_INFO *asic = &info->asics[i];
@@ -699,10 +711,10 @@ static void *compac_mine(void *object)
 						cgtime(&info->monitor_time);
 
 						if (asic->dups > 3) {
-							applog(LOG_INFO,"%d: %s %d - duplicate nonces from chip[%d] - %.2fMHz", compac->cgminer_id, compac->drv->name, compac->device_id, i, info->frequency);
+							applog(info->log_wide,"%d: %s %d - duplicate nonces from chip[%d] - %.2fMHz", compac->cgminer_id, compac->drv->name, compac->device_id, i, info->frequency);
 							asic->dups = 0;
 						} else {
-							applog(LOG_INFO,"%d: %s %d - missing nonces from chip[%d] - %.2fMHz", compac->cgminer_id, compac->drv->name, compac->device_id, i, info->frequency);
+							applog(info->log_wide,"%d: %s %d - missing nonces from chip[%d] - %.2fMHz", compac->cgminer_id, compac->drv->name, compac->device_id, i, info->frequency);
 						}
 
 						old_frequency = info->frequency_requested;
@@ -722,6 +734,7 @@ static void *compac_mine(void *object)
 				}
 			}
 
+			// move target fequency towards peak frequency, once peak is done increasing.
 			if (ms_tdiff(&now, &info->last_computed_increase) > MS_MINUTE_5 && info->frequency_computed < info->frequency ) {
 				float new_frequency = info->frequency - 6.25;
 				if (new_frequency < info->frequency_computed) {
@@ -729,14 +742,6 @@ static void *compac_mine(void *object)
 				}
 				new_frequency = ceil(100 * (new_frequency) / 625.0) * 6.25;
 
-/*
-				applog(LOG_WARNING,"%d: %s %d - low eff: (1m)%.1f (5m)%.1f (15m)%.1f (WU)%.1f  - [%.1f]", compac->cgminer_id, compac->drv->name, compac->device_id, info->eff_1m, info->eff_5m, info->eff_15, info->eff_wu, opt_gekko_tune_down);
-
-				if (new_frequency == info->frequency) {
-					info->mining_state = MINER_RESET;
-					continue;
-				}
-*/
 				if (new_frequency != info->frequency) {
 					applog(LOG_WARNING,"%d: %s %d - peak adjust: target frequency %.2fMHz -> %.2fMHz", compac->cgminer_id, compac->drv->name, compac->device_id, info->frequency_requested, new_frequency);
 					cgtime(&info->last_computed_increase);
@@ -751,14 +756,15 @@ static void *compac_mine(void *object)
 				}
 			}
 
-			if (ms_tdiff(&now, &info->last_frequency_ping) > MS_SECOND_1 || (info->frequency_of != info->chips && ms_tdiff(&now, &info->last_frequency_ping) > 10)) {
+			// move running frequency towards target.
+			if (ms_tdiff(&now, &info->last_frequency_adjust) > MS_SECOND_1 || (info->frequency_of != info->chips && ms_tdiff(&now, &info->last_frequency_ping) > 10)) {
 
 				info->frequency_of--;
 				struct ASIC_INFO *asic = &info->asics[info->frequency_of];
 
 				if (info->frequency_of == (info->chips - 1) && 
-				    (info->eff_gs >= opt_gekko_tune_up || asic->frequency < info->frequency_computed) &&
-					ms_tdiff(&now, &info->last_dup_time) > MS_MINUTE_5) {
+					((ms_tdiff(&now, &info->last_dup_time) > MS_MINUTE_2 && (info->eff_gs >= opt_gekko_tune_up || asic->frequency < info->frequency_computed)) ||
+					(ms_tdiff(&now, &info->last_frequency_adjust) > MS_SECOND_30 && (info->eff_1m > 98.0 || asic->frequency < info->frequency_computed)))) {
 					adjustable = 1;
 				}
 
@@ -784,6 +790,7 @@ static void *compac_mine(void *object)
 							new_frequency = asic->frequency_requested;
 						}
 						if (asic->frequency != new_frequency) {
+							cgtime(&info->last_frequency_adjust);
 							cgtime(&info->monitor_time);
 							if (info->asic_type == BM1387) {
 								compac_set_frequency_single(compac, new_frequency, info->frequency_of);
@@ -1093,7 +1100,9 @@ static bool compac_init(struct thr_info *thr)
 	info->prev_nonce = 0;
 	info->fail_count = 0;
 	info->busy_work = 0;
+	info->log_wide = (opt_widescreen) ? LOG_WARNING : LOG_INFO;
 	info->nononce_reset = 0;
+	info->low_eff_resets = 0;
 	info->frequency = 200;
 	info->frequency_default = 200;
 	info->frequency_fail_high = 0;
@@ -1263,6 +1272,8 @@ static int64_t compac_scanwork(struct thr_info *thr)
 			cgtime(&info->last_micro_ping);
 			cgtime(&info->last_nonce);
 			compac_flush_buffer(compac);
+			compac_update_rates(compac);
+			info->update_work = 1;
 			info->mining_state = MINER_MINING;
 			return 0;
 			break;
@@ -1548,17 +1559,17 @@ static void compac_statline(char *buf, size_t bufsiz, struct cgpu_info *compac)
 		if (info->micro_found) {
 			sprintf(asic_statline, "BM1387:%02d%-1s %.2fMHz T:%.0f P:%.0f (%d/%d/%d/%.0fF)", info->chips, ab, info->frequency, info->frequency_requested, info->frequency_computed, info->scanhash_ms, info->task_ms, info->fullscan_ms, info->micro_temp);
 		} else {
-			if (opt_log_output) {
-				sprintf(asic_statline, "BM1387:%02d%-1s %.2fMHz T:%.0f P:%.0f %s%s", info->chips, ab, info->frequency, info->frequency_requested, info->frequency_computed, asic_stat, ms_stat);
+			if (opt_widescreen) {
+				sprintf(asic_statline, "BM1387:%02d%-1s %.0f/%.0f/%.0f %s %s%s", info->chips, ab, info->frequency, info->frequency_requested, info->frequency_computed, ms_stat, asic_stat, eff_stat);
 			} else {
-				sprintf(asic_statline, "BM1387:%02d%-1s %.2fMHz T:%.0f P:%.0f %s %s%s", info->chips, ab, info->frequency, info->frequency_requested, info->frequency_computed, ms_stat, asic_stat, eff_stat);
+				sprintf(asic_statline, "BM1387:%02d%-1s %.2fMHz T:%-3.0f P:%-3.0f %-13s %s%s", info->chips, ab, info->frequency, info->frequency_requested, info->frequency_computed, ms_stat, asic_stat, eff_stat);
 			}
 		}
 	} else {
-		if (opt_log_output) {
-			sprintf(asic_statline, "BM1384:%02d  %.2fMHz T:%.0f P:%.0f %s%s", info->chips, info->frequency, info->frequency_requested, info->frequency_computed, asic_stat, ms_stat);
+		if (opt_widescreen) {
+			sprintf(asic_statline, "BM1384:%02d  %.0f/%.0f/%.0f %s %s%s", info->chips, info->frequency, info->frequency_requested, info->frequency_computed, ms_stat, asic_stat, eff_stat);
 		} else {
-			sprintf(asic_statline, "BM1384:%02d  %.2fMHz T:%.0f P:%.0f %s%s", info->chips, info->frequency, info->frequency_requested, info->frequency_computed, asic_stat, eff_stat);
+			sprintf(asic_statline, "BM1384:%02d  %.2fMHz T:%-3.0f P:%-3.0f %-13s %s%s", info->chips, info->frequency, info->frequency_requested, info->frequency_computed, ms_stat, asic_stat, eff_stat);
 		}
 	}
 

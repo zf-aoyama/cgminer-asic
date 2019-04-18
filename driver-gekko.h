@@ -122,6 +122,7 @@ struct COMPAC_INFO {
 	int accepted;                // Nonces accepted
 	int dups;                    // Duplicates found
 	int interface;               // USB interface
+	int low_eff_resets;          // Count of low_eff resets
 	int nonceless;               // Tasks sent.  Resets when nonce is found.
 	int nonces;                  // Nonces found
 	int nononce_reset;           // Count missing nonces
@@ -143,6 +144,7 @@ struct COMPAC_INFO {
 	uint32_t expected_chips;     // Number of chips for device
 	uint64_t hashes;             // Hashes completed
 	uint32_t job_id;             // JobId incrementer
+	uint32_t log_wide;           // Extra output in widescreen mode
 	uint32_t low_hash;           // Tracks of low hashrate
 	uint32_t max_job_id;         // JobId cap
 	uint64_t max_task_wait;      // Micro seconds to wait before next task is sent
@@ -167,6 +169,7 @@ struct COMPAC_INFO {
 	struct timeval last_frequency_ping;     // Last time of frequency poll
 	struct timeval last_frequency_report;   // Last change of frequency report
 	struct timeval last_chain_inactive;     // Last sent chain inactive
+	struct timeval last_low_eff_reset;      // Last time responded to low_eff condition
 	struct timeval last_micro_ping;         // Last time of micro controller poll
 	struct timeval last_write_error;        // Last usb write error message
 	struct timeval last_wu_increase;        // Last wu_max change
