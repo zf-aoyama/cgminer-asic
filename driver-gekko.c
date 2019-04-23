@@ -218,14 +218,14 @@ static void compac_update_rates(struct cgpu_info *compac)
 		info->wu_max = 0;
 	}
 
+	info->wu = info->chips * info->frequency * info->cores / 71.6;
 	info->hashrate = info->chips * info->frequency * info->cores * 1000000;
 	info->fullscan_ms = 1000.0 * 0xffffffffull / info->hashrate;
 	info->fullscan_us = 1000.0 * 1000.0 * 0xffffffffull / info->hashrate;
-	info->scanhash_ms = bound(info->fullscan_ms / 2, 1, 100);
 	info->ticket_mask = bound(pow(2, ceil(log(info->hashrate / (2.0 * 0xffffffffull)) / log(2))) - 1, 0, 4000);
 	info->ticket_mask = (info->asic_type == BM1387) ? 0 : info->ticket_mask;
 	info->difficulty = info->ticket_mask + 1;
-	info->wu = 0.0139091 * info->cores * info->chips * info->frequency;
+	info->scanhash_ms = info->fullscan_ms * info->difficulty;
 
 	info->wait_factor = ((!opt_gekko_noboost && info->vmask && info->asic_type == BM1387) ? 1.80 : 0.60);
 	info->max_task_wait = bound(info->wait_factor * info->fullscan_us, 1, 3 * info->fullscan_us);
@@ -438,7 +438,6 @@ static uint64_t compac_check_nonce(struct cgpu_info *compac)
 		return hashes;
 	}
 
-	hashes = info->difficulty * 0xffffffffull;
 	info->prev_nonce = nonce;
 	asic->prev_nonce = nonce;
 
@@ -486,6 +485,8 @@ static uint64_t compac_check_nonce(struct cgpu_info *compac)
 			applog(LOG_INFO, "%d: %s %d - AsicBoost nonce found : midstate%d", compac->cgminer_id, compac->drv->name, compac->device_id, midnum);
 		}
 
+		hashes = info->difficulty * 0xffffffffull;
+
 		info->accepted++;
 		info->failing = false;
 		info->dups = 0;
@@ -493,7 +494,6 @@ static uint64_t compac_check_nonce(struct cgpu_info *compac)
 	} else {
 		if (hwe != compac->hw_errors) {
 			cgtime(&info->last_hwerror);
-			compac_flush_buffer(compac);
 		}
 	}
 
@@ -647,7 +647,7 @@ static void *compac_mine(void *object)
 			}
 
 			// unhealthy mining condition
-			if (low_eff) {
+			if (low_eff & ms_tdiff(&now, &info->last_low_eff_reset) > MS_MINUTE_1) {
 				// only respond when target and peak converges
 				if (ceil(100 * (info->frequency_requested) / 625.0) * 6.25 == ceil(100 * (info->frequency_computed) / 625.0) * 6.25) {
 					// throttle reaction to once per half hour
@@ -1124,6 +1124,7 @@ static bool compac_init(struct thr_info *thr)
 	cgtime(&info->last_write_error);
 	cgtime(&info->last_frequency_adjust);
 	cgtime(&info->last_computed_increase);
+	cgtime(&info->last_low_eff_reset);
 	info->last_frequency_ping = (struct timeval){0};
 	cgtime(&info->last_micro_ping);
 	cgtime(&info->last_scanhash);
@@ -1204,6 +1205,7 @@ static int64_t compac_scanwork(struct thr_info *thr)
 	int read_bytes;
 	uint32_t err = 0;
 	uint64_t hashes = 0;
+	uint32_t sleep_us = bound(info->scanhash_ms * 1000, 250, MS_SECOND_1 / 2 * 1000);
 
 	if (info->chips == 0)
 		cgsleep_ms(10);
@@ -1300,9 +1302,13 @@ static int64_t compac_scanwork(struct thr_info *thr)
 		default:
 			break;
 	}
+
+	mutex_lock(&info->lock);
 	hashes = info->hashes;
-	info->hashes -= hashes;
-	usleep(500);
+	info->hashes = 0;
+	mutex_unlock(&info->lock);
+
+	usleep(sleep_us);
 
 	return hashes;
 }
@@ -1412,8 +1418,6 @@ static struct cgpu_info *compac_detect_one(struct libusb_device *dev, struct usb
 	}
 	compac->unique_id[8] = 0;
 
-	applog(LOG_WARNING, "%d: %s %d - %s (%s)", compac->cgminer_id, compac->drv->name, compac->device_id, compac->usbdev->prod_string, compac->unique_id);
-
 	return compac;
 }
 
@@ -1434,7 +1438,9 @@ static bool compac_prepare(struct thr_info *thr)
 	init_count = &dev_init_count[device];
 	(*init_count)++;
 
-	if ((*init_count) > 1) {
+	if ((*init_count) == 1) {
+		applog(LOG_WARNING, "%d: %s %d - %s (%s)", compac->cgminer_id, compac->drv->name, compac->device_id, compac->usbdev->prod_string, compac->unique_id);
+	} else {
 		applog(LOG_INFO, "%d: %s %d - init_count %d", compac->cgminer_id, compac->drv->name, compac->device_id, *init_count);
 	}
 
@@ -1465,14 +1471,14 @@ static bool compac_prepare(struct thr_info *thr)
 	}
 
 	if ((*init_count) != 0 && (*init_count) % 5 == 0) {
-		if ((*init_count) >= 15) {
+		applog(LOG_INFO, "%d: %s %d - forcing usb_nodev()", compac->cgminer_id, compac->drv->name, compac->device_id);
+		usb_nodev(compac);
+	} else if ((*init_count) > 1) {
+		if ((*init_count) > 10) {
 			compac->deven = DEV_DISABLED;
 		} else {
-			applog(LOG_INFO, "%d: %s %d - forcing usb_nodev()", compac->cgminer_id, compac->drv->name, compac->device_id);
-			usb_nodev(compac);
+			cgsleep_ms(MS_SECOND_5);
 		}
-	} else if ((*init_count) > 1) {
-		cgsleep_ms(MS_SECOND_5);
 	}
 
 	return true;
@@ -1501,7 +1507,7 @@ static void compac_statline(char *buf, size_t bufsiz, struct cgpu_info *compac)
 			sprintf(asic_statline, "found 0 chip(s)");
 		}
 
-		for (i = strlen(asic_statline); i < stat_len; i++)
+		for (i = strlen(asic_statline); i < stat_len + 16; i++)
 			asic_statline[i] = ' ';
 
 		tailsprintf(buf, bufsiz, "%s", asic_statline);
@@ -1543,7 +1549,7 @@ static void compac_statline(char *buf, size_t bufsiz, struct cgpu_info *compac)
 			asic_stat[info->chips + 1 + i] = ' ';
 	}
 
-	sprintf(ms_stat, "(%d/%d/%d)", info->scanhash_ms, info->task_ms, info->fullscan_ms);
+	sprintf(ms_stat, "(%.0f/%.0f/%.0f)", info->scanhash_ms, info->task_ms, info->fullscan_ms);
 
 	uint8_t wuc = (ms_tdiff(&now, &info->last_wu_increase) > MS_MINUTE_1) ? 32 : 94;
 
@@ -1560,16 +1566,16 @@ static void compac_statline(char *buf, size_t bufsiz, struct cgpu_info *compac)
 			sprintf(asic_statline, "BM1387:%02d%-1s %.2fMHz T:%.0f P:%.0f (%d/%d/%d/%.0fF)", info->chips, ab, info->frequency, info->frequency_requested, info->frequency_computed, info->scanhash_ms, info->task_ms, info->fullscan_ms, info->micro_temp);
 		} else {
 			if (opt_widescreen) {
-				sprintf(asic_statline, "BM1387:%02d%-1s %.0f/%.0f/%.0f %s %s%s", info->chips, ab, info->frequency, info->frequency_requested, info->frequency_computed, ms_stat, asic_stat, eff_stat);
+				sprintf(asic_statline, "BM1387:%02d%-1s %.0f/%.0f/%3.0f %s %s", info->chips, ab, info->frequency, info->frequency_requested, info->frequency_computed, ms_stat, asic_stat);
 			} else {
-				sprintf(asic_statline, "BM1387:%02d%-1s %.2fMHz T:%-3.0f P:%-3.0f %-13s %s%s", info->chips, ab, info->frequency, info->frequency_requested, info->frequency_computed, ms_stat, asic_stat, eff_stat);
+				sprintf(asic_statline, "BM1387:%02d%-1s %.2fMHz T:%-3.0f P:%-3.0f %-13s %s", info->chips, ab, info->frequency, info->frequency_requested, info->frequency_computed, ms_stat, asic_stat);
 			}
 		}
 	} else {
 		if (opt_widescreen) {
-			sprintf(asic_statline, "BM1384:%02d  %.0f/%.0f/%.0f %s %s%s", info->chips, info->frequency, info->frequency_requested, info->frequency_computed, ms_stat, asic_stat, eff_stat);
+			sprintf(asic_statline, "BM1384:%02d  %.0f/%.0f/%.0f %s %s", info->chips, info->frequency, info->frequency_requested, info->frequency_computed, ms_stat, asic_stat);
 		} else {
-			sprintf(asic_statline, "BM1384:%02d  %.2fMHz T:%-3.0f P:%-3.0f %-13s %s%s", info->chips, info->frequency, info->frequency_requested, info->frequency_computed, ms_stat, asic_stat, eff_stat);
+			sprintf(asic_statline, "BM1384:%02d  %.2fMHz T:%-3.0f P:%-3.0f %-13s %s", info->chips, info->frequency, info->frequency_requested, info->frequency_computed, ms_stat, asic_stat);
 		}
 	}
 
@@ -1580,7 +1586,7 @@ static void compac_statline(char *buf, size_t bufsiz, struct cgpu_info *compac)
 	for (i = len; i < stat_len; i++)
 		asic_statline[i] = ' ';
 
-	tailsprintf(buf, bufsiz, "%s", asic_statline);
+	tailsprintf(buf, bufsiz, "%s%s", asic_statline, eff_stat);
 }
 
 static struct api_data *compac_api_stats(struct cgpu_info *compac)

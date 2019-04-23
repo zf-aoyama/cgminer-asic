@@ -69,7 +69,7 @@ struct ASIC_INFO {
 	struct timeval state_change_time;       // Device startup time
 	struct timeval last_frequency_reply;    // Last time of frequency reply
 	uint32_t prev_nonce;         // Last nonce found
-	uint32_t fullscan_ms;        // Estimated time(ms) for full nonce range
+	float fullscan_ms;           // Estimated time(ms) for full nonce range
 	uint32_t fullscan_us;        // Estimated time(us) for full nonce range
 	uint64_t hashrate;           // Estimated hashrate = cores x chips x frequency
 };
@@ -106,9 +106,9 @@ struct COMPAC_INFO {
 	float micro_temp;            // Micro Reported Temp
 	float wait_factor;           // Used to compute max_task_wait
 
-	uint32_t scanhash_ms;        // Sleep time inside scanhash loop
-	uint32_t task_ms;            // Avg time(ms) between task sent to device
-	uint32_t fullscan_ms;        // Estimated time(ms) for full nonce range
+	float fullscan_ms;           // Estimated time(ms) for full nonce range
+	float scanhash_ms;           // Sleep time inside scanhash loop
+	float task_ms;               // Avg time(ms) between task sent to device
 	uint32_t fullscan_us;        // Estimated time(us) for full nonce range
 	uint64_t hashrate;           // Estimated hashrate = cores x chips x frequency
 	uint64_t busy_work;
