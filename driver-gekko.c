@@ -225,7 +225,7 @@ static void compac_update_rates(struct cgpu_info *compac)
 	info->ticket_mask = bound(pow(2, ceil(log(info->hashrate / (2.0 * 0xffffffffull)) / log(2))) - 1, 0, 4000);
 	info->ticket_mask = (info->asic_type == BM1387) ? 0 : info->ticket_mask;
 	info->difficulty = info->ticket_mask + 1;
-	info->scanhash_ms = info->fullscan_ms * info->difficulty;
+	info->scanhash_ms = info->fullscan_ms * info->difficulty / 4;
 
 	info->wait_factor = ((!opt_gekko_noboost && info->vmask && info->asic_type == BM1387) ? 1.80 : 0.60);
 	info->max_task_wait = bound(info->wait_factor * info->fullscan_us, 1, 3 * info->fullscan_us);
@@ -1205,7 +1205,7 @@ static int64_t compac_scanwork(struct thr_info *thr)
 	int read_bytes;
 	uint32_t err = 0;
 	uint64_t hashes = 0;
-	uint32_t sleep_us = bound(info->scanhash_ms * 1000, 250, MS_SECOND_1 / 2 * 1000);
+	uint32_t sleep_us = bound(info->scanhash_ms * 1000, 100, MS_SECOND_1 / 2 * 1000);
 
 	if (info->chips == 0)
 		cgsleep_ms(10);
