@@ -61,12 +61,15 @@ enum asic_state {
 
 struct ASIC_INFO {
 	struct timeval last_nonce;              // Last time nonce was found
-	float frequency;
-	float frequency_requested;              // Requested Frequency
-	int dups;                               // Duplicate nonce counter
+	float frequency;                        // Current frequency
+	float frequency_set;                    // set_frequency
+	uint32_t frequency_attempt;             // attempts of set_frequency
+	uint32_t dups;                          // Duplicate nonce counter
 	enum asic_state state;
 	enum asic_state last_state;
 	struct timeval state_change_time;       // Device startup time
+	struct timeval last_frequency_adjust;   // Last time of frequency adjust
+	struct timeval last_frequency_ping;     // Last time of frequency ping
 	struct timeval last_frequency_reply;    // Last time of frequency reply
 	uint32_t prev_nonce;         // Last nonce found
 	float fullscan_ms;           // Estimated time(ms) for full nonce range
@@ -133,6 +136,7 @@ struct COMPAC_INFO {
 	bool vmask;                  // Current pool's vmask
 	bool boosted;                // Good nonce found for midstate2/3/4
 	bool report;
+	bool frequency_syncd;        // All asics share same frequency
 
 	double wu;
 	double wu_max;               // Max WU since last frequency change
