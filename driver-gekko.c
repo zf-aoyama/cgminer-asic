@@ -133,12 +133,13 @@ static void compac_send(struct cgpu_info *compac, unsigned char *req_tx, uint32_
 	}
 	info->cmd[bytes - 1] |= bmcrc(req_tx, crc_bits);
 
-	usleep(100);
-
 	int log_level = (bytes < info->task_len) ? LOG_INFO : LOG_INFO;
 
 	dumpbuffer(compac, LOG_INFO, "TX", info->cmd, bytes);
 	usb_write(compac, info->cmd, bytes, &read_bytes, C_REQUESTRESULTS);
+
+	//let the usb frame propagate
+	cgsleep_ms(1);
 }
 
 static void compac_send_chain_inactive(struct cgpu_info *compac)
@@ -888,7 +889,8 @@ static void *compac_mine(void *object)
 				}
 			}
 
-			sched_yield();
+			//let the usb frame propagate
+			cgsleep_ms(1);
 			if (old_work) {
 				mutex_lock(&info->lock);
 				work_completed(compac, old_work);
