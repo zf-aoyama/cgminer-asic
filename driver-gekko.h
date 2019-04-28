@@ -33,6 +33,13 @@ enum miner_asic {
 	BM1387
 };
 
+enum plateau_type {
+	PT_NONONCE = 1,
+	PT_FREQSET,
+	PT_FREQNR,
+	PT_DUPNONCE
+};
+
 enum micro_command {
 	M1_GET_FAN    = (0x00 << 3),
 	M1_GET_RPM    = (0x01 << 3),
@@ -128,7 +135,7 @@ struct COMPAC_INFO {
 	int low_eff_resets;          // Count of low_eff resets
 	int nonceless;               // Tasks sent.  Resets when nonce is found.
 	int nonces;                  // Nonces found
-	int nononce_reset;           // Count missing nonces
+	int plateau_reset;           // Count plateau based resets
 	int zero_check;              // Received nonces from zero work
 	int vcore;                   // Core voltage
 	int micro_found;             // Found a micro to communicate with
@@ -147,6 +154,7 @@ struct COMPAC_INFO {
 	uint32_t difficulty;         // For computing hashrate
 	uint32_t expected_chips;     // Number of chips for device
 	uint64_t hashes;             // Hashes completed
+	uint64_t xhashes;            // Hashes completed / 0xffffffffull
 	uint32_t job_id;             // JobId incrementer
 	uint32_t log_wide;           // Extra output in widescreen mode
 	uint32_t low_hash;           // Tracks of low hashrate
@@ -172,6 +180,7 @@ struct COMPAC_INFO {
 	struct timeval last_frequency_adjust;   // Last time of frequency adjust
 	struct timeval last_frequency_ping;     // Last time of frequency poll
 	struct timeval last_frequency_report;   // Last change of frequency report
+	struct timeval last_frequency_invalid;  // Last change of frequency report anomaly
 	struct timeval last_chain_inactive;     // Last sent chain inactive
 	struct timeval last_low_eff_reset;      // Last time responded to low_eff condition
 	struct timeval last_micro_ping;         // Last time of micro controller poll
