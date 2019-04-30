@@ -6,6 +6,7 @@
 #define BUFFER_MAX 0xFF
 #define MS_SECOND_1  1000
 #define MS_SECOND_5  1000 * 5
+#define MS_SECOND_15 1000 * 15
 #define MS_SECOND_30 1000 * 30
 #define MS_MINUTE_1  1000 * 60
 #define MS_MINUTE_2  1000 * 60 * 2
@@ -131,6 +132,7 @@ struct COMPAC_INFO {
 	int frequency_of;            // Frequency check token
 	int accepted;                // Nonces accepted
 	int dups;                    // Duplicates found
+	int tracker;                 // Track code execution path
 	int interface;               // USB interface
 	int low_eff_resets;          // Count of low_eff resets
 	int nonceless;               // Tasks sent.  Resets when nonce is found.
