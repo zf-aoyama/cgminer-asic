@@ -307,6 +307,7 @@ float opt_gekko_gsd_freq = 100;
 float opt_gekko_gse_freq = 150;
 float opt_gekko_tune_up = 92;
 float opt_gekko_tune_down = 95;
+float opt_gekko_wait_factor = 0;
 int opt_gekko_gsh_freq = 100;
 int opt_gekko_gsi_freq = 400;
 int opt_gekko_gsh_vcore = 400;
@@ -1929,6 +1930,9 @@ static struct opt_table opt_config_table[] = {
 	OPT_WITH_ARG("--gekko-tune-up",
 		     set_float_0_to_500, opt_show_floatval, &opt_gekko_tune_up,
 		     "Set GekkoScience miner ramping hash threshold, rante 0-99"),
+	OPT_WITH_ARG("--gekko-usbwf",
+		     set_float_0_to_500, opt_show_floatval, &opt_gekko_wait_factor,
+		     "Set GekkoScience miner wait factor, range 0.1-10.0"),
 	OPT_WITH_ARG("--gekko-newpac-freq",
 		     set_int_0_to_9999, opt_show_intval, &opt_gekko_gsh_freq,
 		     "Set GekkoScience NewPac BM1387 frequency in MHz, range 50-900"),

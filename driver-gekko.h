@@ -71,6 +71,7 @@ struct ASIC_INFO {
 	struct timeval last_nonce;              // Last time nonce was found
 	float frequency;                        // Current frequency
 	float frequency_set;                    // set_frequency
+	bool frequency_updated;                 // Initiate check for new frequency
 	uint32_t frequency_attempt;             // attempts of set_frequency
 	uint32_t dups;                          // Duplicate nonce counter
 	enum asic_state state;
@@ -105,14 +106,15 @@ struct COMPAC_INFO {
 	float frequency_fail_high;   // Highest Frequency of Chip Failure
 	float frequency_fail_low;    // Lowest Frequency of Chip Failure
 	float frequency_computed;    // Highest hashrate seen as a frequency value
-	float healthy;               // Lower percentile before tagging asic unhealthy
-	float eff_gs;
-	float eff_tm;
-	float eff_li;
-	float eff_1m;
-	float eff_5m;
-	float eff_15;
-	float eff_wu;
+	float eff_gs;                // hash : expected hash
+	float eff_tm;                // hash : expected hash
+	float eff_li;                // hash : expected hash
+	float eff_1m;                // hash : expected hash
+	float eff_5m;                // hash : expected hash
+	float eff_15;                // hash : expected hash
+	float eff_wu;                // wu : expected wu
+	float tune_up;               // Increase frequency when eff_gs is above value
+	float tune_down;             // Decrease frequency when eff_gs is below value
 
 	float micro_temp;            // Micro Reported Temp
 	float wait_factor;           // Used to compute max_task_wait
@@ -129,6 +131,7 @@ struct COMPAC_INFO {
 
 	int failing;                 // Flag failing sticks
 	int fail_count;              // Track failures.
+	int frequency_fo;            // Frequency check token
 	int frequency_of;            // Frequency check token
 	int accepted;                // Nonces accepted
 	int dups;                    // Duplicates found
@@ -166,7 +169,6 @@ struct COMPAC_INFO {
 	uint32_t rx_len;             // rx length
 	uint32_t task_len;           // task length
 	uint32_t ticket_mask;        // Used to reduce flashes per second
-	uint32_t tx_len;             // tx length
 	uint32_t update_work;        // Notification of work update
 
 	struct timeval start_time;              // Device startup time
