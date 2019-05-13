@@ -4,6 +4,7 @@
 #include <unistd.h>
 
 static bool compac_prepare(struct thr_info *thr);
+static pthread_mutex_t static_lock = PTHREAD_MUTEX_INITIALIZER;
 static bool last_widescreen;
 static uint8_t dev_init_count[0xffff] = {0};
 static uint8_t *init_count;
@@ -205,12 +206,14 @@ static void compac_update_rates(struct cgpu_info *compac)
 	float average_frequency = 0;
 	int i;
 
+	info->frequency_asic = 0;
 	for (i = 0; i < info->chips; i++) {
 		asic = &info->asics[i];
 		asic->hashrate = asic->frequency * info->cores * 1000000;
 		asic->fullscan_ms = 1000.0 * 0xffffffffull / asic->hashrate;
 		asic->fullscan_us = 1000.0 * 1000.0 * 0xffffffffull / asic->hashrate;
 		average_frequency += asic->frequency;
+		info->frequency_asic = (asic->frequency > info->frequency_asic ) ? asic->frequency : info->frequency_asic;
 	}
 
 	average_frequency = average_frequency / info->chips;
@@ -229,7 +232,7 @@ static void compac_update_rates(struct cgpu_info *compac)
 	info->difficulty = info->ticket_mask + 1;
 	info->scanhash_ms = info->fullscan_ms * info->difficulty / 4;
 
-	info->wait_factor = ((!opt_gekko_noboost && info->vmask && info->asic_type == BM1387) ? 1.80 : 0.60);
+	info->wait_factor = ((!opt_gekko_noboost && info->vmask && info->asic_type == BM1387) ? 0.60 * info->midstates : 0.60);
 	if (opt_gekko_wait_factor > 0 && info->asic_type == BM1387) {
 		info->wait_factor = opt_gekko_wait_factor;
 	}
@@ -462,7 +465,7 @@ static uint64_t compac_check_nonce(struct cgpu_info *compac)
 	if (!opt_gekko_noboost && info->vmask) {
 		// force check last few nonces by [job_id - 1]
 		if (info->asic_type == BM1387) {
-			for (i = 0; i <= 3; i++) {
+			for (i = 0; i < info->midstates; i++) {
 				if (job_id >= i) {
 					if (info->active_work[job_id - i]) {
 						work = info->work[job_id - i];
@@ -547,15 +550,18 @@ static void init_task(struct COMPAC_INFO *info)
 		info->task[0] = 0x21;
 		info->task[1] = info->task_len;
 		info->task[2] = info->job_id & 0xff;
-		info->task[3] = ((!opt_gekko_noboost && info->vmask) ? 0x04 : 0x01);
+		info->task[3] = ((!opt_gekko_noboost && info->vmask) ? info->midstates : 0x01);
 
 		if (info->mining_state == MINER_MINING) {
 			stuff_reverse(info->task + 8, work->data + 64, 12);
 			stuff_reverse(info->task + 20, work->midstate, 32);
 			if (!opt_gekko_noboost && info->vmask) {
-				stuff_reverse(info->task + 20 + 32, work->midstate1, 32);
-				stuff_reverse(info->task + 20 + 32 + 32, work->midstate2, 32);
-				stuff_reverse(info->task + 20 + 32 + 32 + 32, work->midstate3, 32);
+				if (info->midstates > 1);
+					stuff_reverse(info->task + 20 + 32, work->midstate1, 32);
+				if (info->midstates > 2);
+					stuff_reverse(info->task + 20 + 32 + 32, work->midstate2, 32);
+				if (info->midstates > 3);
+					stuff_reverse(info->task + 20 + 32 + 32 + 32, work->midstate3, 32);
 			}
 		} else {
 			memset(info->task + 8, 0xff, 12);
@@ -859,6 +865,9 @@ static void *compac_mine(void *object)
 
 						if (asic->frequency < info->frequency_requested) {
 							new_frequency = asic->frequency + opt_gekko_step_freq;
+							if (new_frequency < info->frequency_asic) {
+								new_frequency = info->frequency_asic;
+							}
 							if (new_frequency > info->frequency_requested) {
 								new_frequency = info->frequency_requested;
 							}
@@ -932,7 +941,7 @@ static void *compac_mine(void *object)
 				info->vmask = work->pool->vmask;
 				if (info->asic_type == BM1387) {
 					if (!opt_gekko_noboost && info->vmask) {
-						info->task_len = 150;
+						info->task_len = 54 + 32 * (info->midstates - 1);
 					} else {
 						info->task_len = 54;
 					}
@@ -998,12 +1007,13 @@ static void *compac_handle_rx(void *object, int read_bytes, int path)
 		dumpbuffer(compac, log_level, "RX0", info->rx, read_bytes);
 	}
 
-	if (cmd_resp && info->rx[0] == 0x80) {
+	if (cmd_resp && info->rx[0] == 0x80 && info->frequency_of != info->chips) {
 		float frequency;
 		int frequency_of = info->frequency_of;
+		info->frequency_of = info->chips;
 		cgtime(&info->last_frequency_report);
 
-		if (info->asic_type == BM1387 && (info->rx[2] == 0 || (info->rx[3] >> 4) == 0 || (info->rx[3] & 0x0f) == 0)) {
+		if (info->asic_type == BM1387 && (info->rx[2] == 0 || (info->rx[3] >> 4) == 0 || (info->rx[3] & 0x0f) != 1 || (info->rx[4]) != 0 || (info->rx[5]) != 0)) {
 			cgtime(&info->last_frequency_invalid);
 			applog(LOG_INFO,"%d: %s %d - invalid frequency report", compac->cgminer_id, compac->drv->name, compac->device_id);
 		} else {
@@ -1246,7 +1256,10 @@ static void *compac_listen(void *object)
 						applog(LOG_INFO, "%d: %s %d - found %d chip(s)", compac->cgminer_id, compac->drv->name, compac->device_id, info->chips);
 						if (info->chips > 0) {
 							info->mining_state = MINER_CHIP_COUNT_OK;
+							mutex_lock(&static_lock);
 							(*init_count) = 0;
+							info->init_count = 0;
+							mutex_unlock(&static_lock);
 						} else {
 							info->mining_state = MINER_RESET;
 						}
@@ -1570,6 +1583,7 @@ static struct cgpu_info *compac_detect_one(struct libusb_device *dev, struct usb
 			info->task_len = 54;
 			info->cores = 114;
 			info->max_job_id = 0x7f;
+			info->midstates = (opt_gekko_lowboost) ? 2 : 4;
 			info->tune_up = opt_gekko_tune_up;
 			compac_toggle_reset(compac);
 			break;
@@ -1607,15 +1621,18 @@ static bool compac_prepare(struct thr_info *thr)
 	int i;
 	int read_bytes = 1;
 	bool miner_ok = true;
-	int device = compac->usbinfo.bus_number * 0xff + compac->usbinfo.device_address;
+	int device = (compac->usbinfo.bus_number * 0xff + compac->usbinfo.device_address) % 0xffff;
 
+	mutex_lock(&static_lock);
 	init_count = &dev_init_count[device];
 	(*init_count)++;
+	info->init_count = (*init_count);
+	mutex_unlock(&static_lock);
 
-	if ((*init_count) == 1) {
+	if (info->init_count == 1) {
 		applog(LOG_WARNING, "%d: %s %d - %s (%s)", compac->cgminer_id, compac->drv->name, compac->device_id, compac->usbdev->prod_string, compac->unique_id);
 	} else {
-		applog(LOG_INFO, "%d: %s %d - init_count %d", compac->cgminer_id, compac->drv->name, compac->device_id, *init_count);
+		applog(LOG_INFO, "%d: %s %d - init_count %d", compac->cgminer_id, compac->drv->name, compac->device_id, info->init_count);
 	}
 
 	info->thr = thr;
@@ -1644,11 +1661,11 @@ static bool compac_prepare(struct thr_info *thr)
 
 	}
 
-	if ((*init_count) != 0 && (*init_count) % 5 == 0) {
+	if (info->init_count != 0 && info->init_count % 5 == 0) {
 		applog(LOG_INFO, "%d: %s %d - forcing usb_nodev()", compac->cgminer_id, compac->drv->name, compac->device_id);
 		usb_nodev(compac);
-	} else if ((*init_count) > 1) {
-		if ((*init_count) > 10) {
+	} else if (info->init_count > 1) {
+		if (info->init_count > 10) {
 			compac->deven = DEV_DISABLED;
 		} else {
 			cgsleep_ms(MS_SECOND_5);
@@ -1677,7 +1694,7 @@ static void compac_statline(char *buf, size_t bufsiz, struct cgpu_info *compac)
 	memset(eff_stat, 0, 64);
 
 	if (info->chips == 0) {
-		if ((*init_count) > 1) {
+		if (info->init_count > 1) {
 			sprintf(asic_statline, "found 0 chip(s)");
 		}
 
@@ -1757,8 +1774,10 @@ static void compac_statline(char *buf, size_t bufsiz, struct cgpu_info *compac)
 
 	len = strlen(asic_statline);
 	if (len > stat_len || opt_widescreen != last_widescreen) {
+		mutex_lock(&static_lock);
 		stat_len = len;
 		last_widescreen = opt_widescreen;
+		mutex_unlock(&static_lock);
 	}
 
 	for (i = len; i < stat_len; i++)

@@ -3226,7 +3226,7 @@ resend:
 	/* Attempt to configure stratum protocol feature set first. */
 #ifdef USE_GEKKO
 	configure_stratum_mining(pool);
-	if (!pool->stratum_active) {
+	if (!pool->sock) {
 		//repair damage done by configure_stratum_mining
 		if (!setup_stratum_socket(pool)) {
 			sockd = false;
@@ -3234,6 +3234,11 @@ resend:
 		}
 
 		sockd = true;
+
+		if (recvd) {
+			/* Get rid of any crap lying around if we're resending */
+			clear_sock(pool);
+		}
 	}
 #else
 	if (!configure_stratum_mining(pool))

@@ -1042,6 +1042,7 @@ extern char *opt_bitburner_fury_options;
 #ifdef USE_GEKKO
 extern char *opt_gekko_serial;
 extern bool opt_gekko_noboost;
+extern bool opt_gekko_lowboost;
 extern bool opt_gekko_gsc_detect;
 extern bool opt_gekko_gsd_detect;
 extern bool opt_gekko_gse_detect;

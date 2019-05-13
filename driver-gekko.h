@@ -100,6 +100,7 @@ struct COMPAC_INFO {
 	pthread_mutex_t rlock;       // Mutex Serialize Reads
 
 	float frequency;             // Chip Average Frequency
+	float frequency_asic;        // Highest of current asics.
 	float frequency_default;     // ASIC Frequency on RESET
 	float frequency_requested;   // Requested Frequency
 	float frequency_start;       // Starting Frequency
@@ -137,7 +138,9 @@ struct COMPAC_INFO {
 	int dups;                    // Duplicates found
 	int tracker;                 // Track code execution path
 	int interface;               // USB interface
+	int init_count;              // USB interface initialization counter
 	int low_eff_resets;          // Count of low_eff resets
+	int midstates;               // Number of midstates
 	int nonceless;               // Tasks sent.  Resets when nonce is found.
 	int nonces;                  // Nonces found
 	int plateau_reset;           // Count plateau based resets

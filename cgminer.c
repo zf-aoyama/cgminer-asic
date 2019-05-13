@@ -297,6 +297,7 @@ int opt_bet_clk = 0;
 #ifdef USE_GEKKO
 char *opt_gekko_serial = NULL;
 bool opt_gekko_noboost = 0;
+bool opt_gekko_lowboost = 0;
 bool opt_gekko_gsc_detect = 0;
 bool opt_gekko_gsd_detect = 0;
 bool opt_gekko_gse_detect = 0;
@@ -1915,6 +1916,9 @@ static struct opt_table opt_config_table[] = {
 	OPT_WITHOUT_ARG("--gekko-noboost",
 			 opt_set_bool, &opt_gekko_noboost,
 			 "Disable GekkoScience NewPac/R606 AsicBoost"),
+	OPT_WITHOUT_ARG("--gekko-lowboost",
+			 opt_set_bool, &opt_gekko_lowboost,
+			 "GekkoScience NewPac/R606 AsicBoost - 2 midstate"),
 	OPT_WITH_ARG("--gekko-terminus-freq",
 		     set_float_0_to_500, opt_show_floatval, &opt_gekko_gse_freq,
 		     "Set GekkoScience Terminus BM1384 frequency in MHz, range 6.25-500"),
