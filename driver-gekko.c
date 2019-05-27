@@ -894,7 +894,7 @@ static void *compac_mine(void *object)
 							if (asic->frequency >= info->frequency) {
 								adjustable = 0;
 								info->tracker = info->tracker * 10 + 7;
-							} else {
+							} else if (asic->frequency < info->frequency_asic) {
 								adjustable = 1;
 								info->tracker = info->tracker * 10 + 8;
 							}
