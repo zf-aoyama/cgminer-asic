@@ -306,14 +306,15 @@ bool opt_gekko_gsi_detect = 0;
 float opt_gekko_gsc_freq = 150;
 float opt_gekko_gsd_freq = 100;
 float opt_gekko_gse_freq = 150;
-float opt_gekko_tune_up = 92;
+float opt_gekko_tune_up = 97;
 float opt_gekko_tune_down = 95;
-float opt_gekko_wait_factor = 0;
+float opt_gekko_wait_factor = 0.5;
+float opt_gekko_step_freq = 6.25;
 int opt_gekko_gsh_freq = 100;
-int opt_gekko_gsi_freq = 400;
+int opt_gekko_gsi_freq = 550;
+int opt_gekko_bauddiv = 0;
 int opt_gekko_gsh_vcore = 400;
 int opt_gekko_start_freq = 100;
-int opt_gekko_step_freq = 6;
 int opt_gekko_step_delay = 15;
 #endif
 #ifdef USE_HASHRATIO
@@ -1934,9 +1935,12 @@ static struct opt_table opt_config_table[] = {
 	OPT_WITH_ARG("--gekko-tune-up",
 		     set_float_0_to_500, opt_show_floatval, &opt_gekko_tune_up,
 		     "Set GekkoScience miner ramping hash threshold, rante 0-99"),
-	OPT_WITH_ARG("--gekko-usbwf",
+	OPT_WITH_ARG("--gekko-wait-factor",
 		     set_float_0_to_500, opt_show_floatval, &opt_gekko_wait_factor,
-		     "Set GekkoScience miner wait factor, range 0.1-10.0"),
+		     "Set GekkoScience miner task send wait factor, range 0.01-1.00"),
+	OPT_WITH_ARG("--gekko-bauddiv",
+		     set_int_0_to_9999, opt_show_intval, &opt_gekko_bauddiv,
+		     "Set GekkoScience BM1387 baud divider {0: auto, 1: 1.5M, 7: 375K, 13: 214K, 25: 115K}"),
 	OPT_WITH_ARG("--gekko-newpac-freq",
 		     set_int_0_to_9999, opt_show_intval, &opt_gekko_gsh_freq,
 		     "Set GekkoScience NewPac BM1387 frequency in MHz, range 50-900"),
@@ -1947,7 +1951,7 @@ static struct opt_table opt_config_table[] = {
 		     set_int_0_to_9999, opt_show_intval, &opt_gekko_start_freq,
                      "Ramp start frequency MHz 25-500"),
 	OPT_WITH_ARG("--gekko-step-freq",
-		     set_int_0_to_9999, opt_show_intval, &opt_gekko_step_freq,
+		     set_float_0_to_500, opt_show_intval, &opt_gekko_step_freq,
 		     "Ramp frequency step MHz 1-100"),
 	OPT_WITH_ARG("--gekko-step-delay",
 		     set_int_0_to_9999, opt_show_intval, &opt_gekko_step_delay,

@@ -2,8 +2,9 @@
 #include "miner.h"
 #include "usbutils.h"
 
-#define JOB_MAX 0x7F
-#define BUFFER_MAX 0xFF
+#define JOB_MAX      0x7F
+#define BUFFER_MAX   0xFF
+#define SAMPLE_SIZE  0x78
 #define MS_SECOND_1  1000
 #define MS_SECOND_5  1000 * 5
 #define MS_SECOND_15 1000 * 15
@@ -155,6 +156,7 @@ struct COMPAC_INFO {
 
 	double wu;
 	double wu_max;               // Max WU since last frequency change
+	double rolling;
 
 	uint32_t bauddiv;            // Baudrate divider
 	uint32_t chips;              // Stores number of chips found

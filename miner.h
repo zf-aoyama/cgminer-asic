@@ -1054,11 +1054,12 @@ extern float opt_gekko_gse_freq;
 extern float opt_gekko_tune_down;
 extern float opt_gekko_tune_up;
 extern float opt_gekko_wait_factor;
+extern float opt_gekko_step_freq;
+extern int opt_gekko_bauddiv;
 extern int opt_gekko_gsh_freq;
 extern int opt_gekko_gsi_freq;
 extern int opt_gekko_gsh_vcore;
 extern int opt_gekko_start_freq;
-extern int opt_gekko_step_freq;
 extern int opt_gekko_step_delay;
 #endif
 #ifdef USE_KLONDIKE
