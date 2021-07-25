@@ -20,14 +20,9 @@
 #include <sys/time.h>
 #include <unistd.h>
 
-#ifdef WIN32
-#include <windows.h>
-#endif
-
 #include "compat.h"
 #include "miner.h"
 #include "usbutils.h"
-#include "uthash.h"
 #include "driver-bflsc.h"
 
 int opt_bflsc_overheat = BFLSC_TEMP_OVERHEAT;

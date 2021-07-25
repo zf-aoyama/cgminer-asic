@@ -1,5 +1,5 @@
 /*
- * Copyright 2011-2015 Con Kolivas
+ * Copyright 2011-2018 Con Kolivas
  * Copyright 2011-2015 Andrew Smith
  * Copyright 2011-2012 Luke Dashjr
  * Copyright 2010 Jeff Garzik
@@ -44,6 +44,7 @@
 #ifndef WIN32
 #include <sys/resource.h>
 #else
+#include <winsock2.h>
 #include <windows.h>
 #endif
 #include <ccan/opt/opt.h>
@@ -81,6 +82,14 @@ char *curly = ":D";
 #include "driver-avalon4.h"
 #endif
 
+#ifdef USE_AVALON7
+#include "driver-avalon7.h"
+#endif
+
+#ifdef USE_AVALON8
+#include "driver-avalon8.h"
+#endif
+
 #ifdef USE_AVALON_MINER
 #include "driver-avalon-miner.h"
 #endif
@@ -104,6 +113,16 @@ char *curly = ":D";
 #ifdef USE_BITFURY
 #include "driver-bitfury.h"
 #endif
+
+#ifdef USE_BITFURY16
+#include "driver-bitfury16.h"
+#endif
+
+#ifdef USE_BITMAIN_SOC
+#include <sys/sysinfo.h>
+#include "driver-btm-soc.h"
+#endif
+
 
 #ifdef USE_COINTERRA
 #include "driver-cointerra.h"
@@ -156,6 +175,7 @@ enum benchwork {
 static char *opt_btc_address;
 static char *opt_btc_sig;
 #endif
+struct pool *opt_btcd;
 static char *opt_benchfile;
 static bool opt_benchfile_display;
 static FILE *benchfile_in;
@@ -169,12 +189,13 @@ bool opt_quiet;
 bool opt_realquiet;
 bool opt_loginput;
 bool opt_compact;
+bool opt_decode;
 const int opt_cutofftemp = 95;
 int opt_log_interval = 5;
 static const int max_queue = 1;
 const int max_scantime = 60;
 const int max_expiry = 600;
-unsigned long long global_hashrate;
+uint64_t global_hashrate;
 unsigned long global_quota_gcd = 1;
 time_t last_getwork;
 int opt_pool_fallback = 120;
@@ -228,6 +249,7 @@ char *opt_icarus_options = NULL;
 char *opt_icarus_timing = NULL;
 float opt_anu_freq = 250;
 float opt_au3_freq = 225;
+float opt_compac_freq = 150;
 int opt_au3_volt = 775;
 float opt_rock_freq = 270;
 #endif
@@ -247,6 +269,20 @@ static char *opt_set_avalon2_voltage;
 static char *opt_set_avalon4_fan;
 static char *opt_set_avalon4_voltage;
 static char *opt_set_avalon4_freq;
+#endif
+#ifdef USE_AVALON7
+static char *opt_set_avalon7_fan;
+static char *opt_set_avalon7_voltage;
+static char *opt_set_avalon7_voltage_level;
+static char *opt_set_avalon7_voltage_offset;
+static char *opt_set_avalon7_freq;
+#endif
+#ifdef USE_AVALON8
+static char *opt_set_avalon8_fan;
+static char *opt_set_avalon8_voltage_level;
+static char *opt_set_avalon8_voltage_level_offset;
+static char *opt_set_avalon8_freq;
+static char *opt_set_avalon8_asic_otp;
 #endif
 #ifdef USE_AVALON_MINER
 static char *opt_set_avalonm_voltage;
@@ -268,6 +304,38 @@ char *opt_drillbit_auto = NULL;
 char *opt_bab_options = NULL;
 #ifdef USE_BITMINE_A1
 char *opt_bitmine_a1_options = NULL;
+#endif
+#ifdef USE_DRAGONMINT_T1
+#include "dragonmint_t1.h"
+char *opt_dragonmint_t1_options = NULL;
+int opt_T1Pll[MCOMPAT_CONFIG_MAX_CHAIN_NUM] = {
+	DEFAULT_PLL, DEFAULT_PLL, DEFAULT_PLL, DEFAULT_PLL, 
+	DEFAULT_PLL, DEFAULT_PLL, DEFAULT_PLL, DEFAULT_PLL
+};
+int opt_T1Vol[MCOMPAT_CONFIG_MAX_CHAIN_NUM] = {
+	DEFAULT_VOLT, DEFAULT_VOLT, DEFAULT_VOLT, DEFAULT_VOLT,
+	DEFAULT_VOLT, DEFAULT_VOLT, DEFAULT_VOLT, DEFAULT_VOLT
+};
+int opt_T1VID[MCOMPAT_CONFIG_MAX_CHAIN_NUM] = {};
+bool opt_T1auto = true;
+bool opt_T1_efficient;
+bool opt_T1_performance;
+int opt_T1_target = 100;
+#endif
+#if defined(USE_ANT_S1) || defined(USE_ANT_S2)
+char *opt_bitmain_options;
+static char *opt_set_bitmain_fan;
+char *opt_bitmain_freq;
+// Ignored
+static bool opt_bitmain_nobeeper;
+static bool opt_bitmain_notempoverctrl;
+static bool opt_bitmain_homemode;
+#endif
+#ifdef USE_ANT_S2
+#ifndef USE_ANT_S3
+char *opt_bitmain_dev;
+#endif
+char *opt_bitmain_voltage = BITMAIN_VOLTAGE_DEF;
 #endif
 #ifdef USE_HASHFAST
 static char *opt_set_hfa_fan;
@@ -299,10 +367,13 @@ bool opt_usb_list_all;
 cgsem_t usb_resource_sem;
 static pthread_t usb_poll_thread;
 static bool usb_polling;
+static bool polling_usb;
+static bool usb_reinit;
 #endif
 
 char *opt_kernel_path;
 char *cgminer_path;
+bool opt_gen_stratum_work;
 
 #if defined(USE_BITFORCE)
 bool opt_bfl_noncerange;
@@ -355,6 +426,24 @@ pthread_cond_t gws_cond;
 double rolling1, rolling5, rolling15;
 double total_rolling;
 double total_mhashes_done;
+
+#ifdef USE_BITMAIN_SOC
+char *opt_version_path = NULL;
+char displayed_hash_rate[16] = {0};
+char nonce_num10_string[NONCE_BUFF];
+char nonce_num30_string[NONCE_BUFF];
+char nonce_num60_string[NONCE_BUFF];
+char g_miner_version[256] = {0};
+char g_miner_compiletime[256] = {0};
+char g_miner_type[256] = {0};
+
+double new_total_mhashes_done;
+double new_total_secs = 1.0;
+// only used for total_secs, because we need use system info time, instead of real data time.
+time_t total_tv_start_sys;
+time_t total_tv_end_sys;
+#endif
+
 static struct timeval total_tv_start, total_tv_end;
 static struct timeval restart_tv_start, update_tv_start;
 
@@ -628,7 +717,39 @@ static void sharelog(const char*disposition, const struct work*work)
 
 static char *gbt_req = "{\"id\": 0, \"method\": \"getblocktemplate\", \"params\": [{\"capabilities\": [\"coinbasetxn\", \"workid\", \"coinbase/append\"]}]}\n";
 
-static char *gbt_solo_req = "{\"id\": 0, \"method\": \"getblocktemplate\"}\n";
+static char *gbt_solo_req = "{\"id\": 0, \"method\": \"getblocktemplate\", \"params\": [{\"rules\" : [\"segwit\"]}]}\n";
+
+static const char *gbt_understood_rules[1] = { NULL };
+static const char *gbt_solo_understood_rules[2] = {"segwit", NULL};
+
+static bool gbt_check_required_rule(const char* rule, const char** understood_rules)
+{
+	const char *understood_rule;
+
+	if (!understood_rules || !rule)
+		return false;
+	while ((understood_rule = *understood_rules++)) {
+		if (strcmp(understood_rule, rule) == 0)
+			return true;
+	}
+	return false;
+}
+
+static bool gbt_check_rules(json_t* rules_arr, const char** understood_rules)
+{
+	int i, rule_count;
+	const char *rule;
+
+	if (!rules_arr)
+		return true;
+	rule_count = json_array_size(rules_arr);
+	for (i = 0; i < rule_count; i++) {
+		rule = json_string_value(json_array_get(rules_arr, i));
+		if (rule && *rule++ == '!' && !gbt_check_required_rule(rule, understood_rules))
+			return false;
+	}
+	return true;
+}
 
 /* Adjust all the pools' quota to the greatest common denominator after a pool
  * has been added or the quotas changed. */
@@ -748,6 +869,11 @@ char *set_int_range(const char *arg, int *i, int min, int max)
 	return NULL;
 }
 
+static char *set_int_0_to_65535(const char *arg, int *i)
+{
+	return set_int_range(arg, i, 0, 65535);
+}
+
 static char *set_int_0_to_9999(const char *arg, int *i)
 {
 	return set_int_range(arg, i, 0, 9999);
@@ -758,10 +884,41 @@ static char *set_int_1_to_65535(const char *arg, int *i)
 	return set_int_range(arg, i, 1, 65535);
 }
 
+#ifdef USE_AVALON8
+static char *set_int_0_to_1(const char *arg, int *i)
+{
+	return set_int_range(arg, i, 0, 1);
+}
+
+static char *set_int_0_to_7(const char *arg, int *i)
+{
+	return set_int_range(arg, i, 0, 7);
+}
+#endif
+
+static char *set_int_0_to_5(const char *arg, int *i)
+{
+	return set_int_range(arg, i, 0, 5);
+}
+
 static char *set_int_0_to_10(const char *arg, int *i)
 {
 	return set_int_range(arg, i, 0, 10);
 }
+
+#ifdef USE_DRAGONMINT_T1
+static char *set_int_voltage(const char *arg, int *i)
+{
+	return set_int_range(arg, i, CHIP_VOLT_MIN, CHIP_VOLT_MAX);
+}
+
+/* Intentionally does NOT accept zero so that zero means the value is NOT set
+ * and has no effect. */
+static char *set_int_1_to_31(const char *arg, int *i)
+{
+	return set_int_range(arg, i, 1, 31);
+}
+#endif
 
 static char *set_int_0_to_100(const char *arg, int *i)
 {
@@ -776,6 +933,16 @@ static char *set_int_0_to_255(const char *arg, int *i)
 static char *set_int_1_to_255(const char *arg, int *i)
 {
         return set_int_range(arg, i, 1, 255);
+}
+
+static char *set_int_0_to_7680(const char *arg, int *i)
+{
+        return set_int_range(arg, i, 0, 7680);
+}
+
+static char *set_int_1_to_60(const char *arg, int *i)
+{
+        return set_int_range(arg, i, 1, 60);
 }
 
 static char *set_int_0_to_200(const char *arg, int *i)
@@ -801,6 +968,21 @@ static char *set_int_42_to_85(const char *arg, int *i)
 static char *set_int_1_to_10(const char *arg, int *i)
 {
 	return set_int_range(arg, i, 1, 10);
+}
+
+static char *set_int_24_to_32(const char *arg, int *i)
+{
+	return set_int_range(arg, i, 24, 32);
+}
+
+static char __maybe_unused *set_int_0_to_2(const char *arg, int *i)
+{
+	return set_int_range(arg, i, 0, 2);
+}
+
+static char __maybe_unused *set_int_0_to_3(const char *arg, int *i)
+{
+	return set_int_range(arg, i, 0, 3);
 }
 
 static char __maybe_unused *set_int_0_to_4(const char *arg, int *i)
@@ -851,17 +1033,24 @@ static char *set_rr(enum pool_strategy *strategy)
  * stratum+tcp or by detecting a stratum server response */
 bool detect_stratum(struct pool *pool, char *url)
 {
+	bool ret = false;
+
 	if (!extract_sockaddr(url, &pool->sockaddr_url, &pool->stratum_port))
-		return false;
+		goto out;
 
 	if (!strncasecmp(url, "stratum+tcp://", 14)) {
 		pool->rpc_url = strdup(url);
 		pool->has_stratum = true;
 		pool->stratum_url = pool->sockaddr_url;
-		return true;
+		ret = true;
 	}
-
-	return false;
+out:
+	if (!ret) {
+		free(pool->sockaddr_url);
+		free(pool->stratum_port);
+		pool->stratum_port = pool->sockaddr_url = NULL;
+	}
+	return ret;
 }
 
 static struct pool *add_url(void)
@@ -882,9 +1071,8 @@ static char *setup_url(struct pool *pool, char *arg)
 	opt_set_charp(arg, &pool->rpc_url);
 	if (strncmp(arg, "http://", 7) &&
 	    strncmp(arg, "https://", 8)) {
-		char *httpinput;
+		char httpinput[256];
 
-		httpinput = cgmalloc(256);
 		strcpy(httpinput, "stratum+tcp://");
 		strncat(httpinput, arg, 242);
 		detect_stratum(pool, httpinput);
@@ -1092,6 +1280,19 @@ static void load_temp_cutoffs()
 	}
 }
 
+static char *set_float_100_to_500(const char *arg, float *i)
+{
+	char *err = opt_set_floatval(arg, i);
+
+	if (err)
+		return err;
+
+	if (*i < 100 || *i > 500)
+		return "Value out of range";
+
+	return NULL;
+}
+
 static char *set_float_125_to_500(const char *arg, float *i)
 {
 	char *err = opt_set_floatval(arg, i);
@@ -1122,6 +1323,15 @@ static char *set_null(const char __maybe_unused *arg)
 {
 	return NULL;
 }
+
+#ifdef USE_BITMAIN_SOC
+static char *set_version_path(const char *arg)
+{
+    opt_set_charp(arg, &opt_version_path);
+
+    return NULL;
+}
+#endif
 
 /* These options are available from config file or commandline */
 static struct opt_table opt_config_table[] = {
@@ -1216,8 +1426,8 @@ static struct opt_table opt_config_table[] = {
 #endif
 #ifdef USE_AVALON4
 	OPT_WITHOUT_ARG("--avalon4-automatic-voltage",
-			opt_set_bool, &opt_avalon4_autov,
-			"Automatic adjust voltage base on module DH"),
+		     opt_set_bool, &opt_avalon4_autov,
+		     "Automatic adjust voltage base on module DH"),
 	OPT_WITH_CBARG("--avalon4-voltage",
 		     set_avalon4_voltage, NULL, &opt_set_avalon4_voltage,
 		     "Set Avalon4 core voltage, in millivolts, step: 125"),
@@ -1249,8 +1459,8 @@ static struct opt_table opt_config_table[] = {
 		     opt_set_intval, opt_show_intval, &opt_avalon4_miningmode,
 		     "Set Avalon4 mining mode(0:custom, 1:eco, 2:normal, 3:turbo"),
 	OPT_WITHOUT_ARG("--avalon4-freezesafe",
-			opt_set_bool, &opt_avalon4_freezesafe,
-			"Make Avalon4 running as a radiator when stratum server failed"),
+		     opt_set_bool, &opt_avalon4_freezesafe,
+		     "Make Avalon4 running as a radiator when stratum server failed"),
 	OPT_WITH_ARG("--avalon4-ntcb",
 		     opt_set_intval, opt_show_intval, &opt_avalon4_ntcb,
 		     "Set Avalon4 MM NTC B value"),
@@ -1263,15 +1473,184 @@ static struct opt_table opt_config_table[] = {
 	OPT_WITHOUT_ARG("--avalon4-noncecheck-off",
 		     opt_set_invbool, &opt_avalon4_noncecheck,
 		     "Disable A3218 inside nonce check function"),
-	OPT_WITHOUT_ARG("--avalon4-smart-speed-off",
-		     opt_set_invbool, &opt_avalon4_smart_speed,
-		     "Disable A3218 smart speed funciton"),
+	OPT_WITH_ARG("--avalon4-smart-speed",
+		     opt_set_intval, opt_show_intval, &opt_avalon4_smart_speed,
+		     "Set smart speed, range 0-3. 0 means Disable"),
 	OPT_WITH_ARG("--avalon4-speed-bingo",
 		     set_int_1_to_255, opt_show_intval, &opt_avalon4_speed_bingo,
-		     "Set A3218 speed bingo for smart speed"),
+		     "Set A3218 speed bingo for smart speed mode 1"),
 	OPT_WITH_ARG("--avalon4-speed-error",
 		     set_int_1_to_255, opt_show_intval, &opt_avalon4_speed_error,
-		     "Set A3218 speed error for smart speed"),
+		     "Set A3218 speed error for smart speed mode 1"),
+	OPT_WITH_ARG("--avalon4-least-pll",
+		     set_int_0_to_7680, opt_show_intval, &opt_avalon4_least_pll_check,
+		     "Set least pll check threshold for smart speed mode 2"),
+	OPT_WITH_ARG("--avalon4-most-pll",
+		     set_int_0_to_7680, opt_show_intval, &opt_avalon4_most_pll_check,
+		     "Set most pll check threshold for smart speed mode 2"),
+	OPT_WITHOUT_ARG("--avalon4-iic-detect",
+		     opt_set_bool, &opt_avalon4_iic_detect,
+		     "Enable miner detect through iic controller"),
+	OPT_WITH_ARG("--avalon4-freqadj-time",
+		     set_int_1_to_60, opt_show_intval, &opt_avalon4_freqadj_time,
+		     "Set Avalon4 check interval when run in AVA4_FREQ_TEMPADJ_MODE"),
+	OPT_WITH_ARG("--avalon4-delta-temp",
+		     opt_set_intval, opt_show_intval, &opt_avalon4_delta_temp,
+		     "Set Avalon4 delta temperature when reset freq in AVA4_FREQ_TEMPADJ_MODE"),
+	OPT_WITH_ARG("--avalon4-delta-freq",
+		     opt_set_intval, opt_show_intval, &opt_avalon4_delta_freq,
+		     "Set Avalon4 delta freq when adjust freq in AVA4_FREQ_TEMPADJ_MODE"),
+	OPT_WITH_ARG("--avalon4-freqadj-temp",
+		     opt_set_intval, opt_show_intval, &opt_avalon4_freqadj_temp,
+		     "Set Avalon4 check temperature when run into AVA4_FREQ_TEMPADJ_MODE"),
+#endif
+#ifdef USE_AVALON7
+	OPT_WITH_CBARG("--avalon7-voltage",
+		     set_avalon7_voltage, NULL, &opt_set_avalon7_voltage,
+		     "Set Avalon7 default core voltage, in millivolts, step: 78"),
+	OPT_WITH_CBARG("--avalon7-voltage-level",
+		     set_avalon7_voltage_level, NULL, &opt_set_avalon7_voltage_level,
+		     "Set Avalon7 default level of core voltage, range:[0, 15], step: 1"),
+	OPT_WITH_CBARG("--avalon7-voltage-offset",
+		     set_avalon7_voltage_offset, NULL, &opt_set_avalon7_voltage_offset,
+		     "Set Avalon7 default offset of core voltage, range:[-2, 1], step: 1"),
+	OPT_WITH_CBARG("--avalon7-freq",
+		     set_avalon7_freq, NULL, &opt_set_avalon7_freq,
+		     "Set Avalon7 default frequency, range:[24, 1404], step: 12, example: 500"),
+	OPT_WITH_ARG("--avalon7-freq-sel",
+		     set_int_0_to_5, opt_show_intval, &opt_avalon7_freq_sel,
+		     "Set Avalon7 default frequency select, range:[0, 5], step: 1, example: 3"),
+	OPT_WITH_CBARG("--avalon7-fan",
+		     set_avalon7_fan, NULL, &opt_set_avalon7_fan,
+		     "Set Avalon7 target fan speed, range:[0, 100], step: 1, example: 0-100"),
+	OPT_WITH_ARG("--avalon7-temp",
+		     set_int_0_to_100, opt_show_intval, &opt_avalon7_temp_target,
+		     "Set Avalon7 target temperature, range:[0, 100]"),
+	OPT_WITH_ARG("--avalon7-polling-delay",
+		     set_int_1_to_65535, opt_show_intval, &opt_avalon7_polling_delay,
+		     "Set Avalon7 polling delay value (ms)"),
+	OPT_WITH_ARG("--avalon7-aucspeed",
+		     opt_set_intval, opt_show_intval, &opt_avalon7_aucspeed,
+		     "Set AUC3 IIC bus speed"),
+	OPT_WITH_ARG("--avalon7-aucxdelay",
+		     opt_set_intval, opt_show_intval, &opt_avalon7_aucxdelay,
+		     "Set AUC3 IIC xfer read delay, 4800 ~= 1ms"),
+	OPT_WITH_ARG("--avalon7-smart-speed",
+		     opt_set_intval, opt_show_intval, &opt_avalon7_smart_speed,
+		     "Set Avalon7 smart speed, range 0-1. 0 means Disable"),
+	OPT_WITH_ARG("--avalon7-th-pass",
+		     set_int_0_to_65535, opt_show_intval, &opt_avalon7_th_pass,
+		     "Set A3212 th pass value"),
+	OPT_WITH_ARG("--avalon7-th-fail",
+		     set_int_0_to_65535, opt_show_intval, &opt_avalon7_th_fail,
+		     "Set A3212 th fail value"),
+	OPT_WITH_ARG("--avalon7-th-init",
+		     set_int_0_to_65535, opt_show_intval, &opt_avalon7_th_init,
+		     "Set A3212 th init value"),
+	OPT_WITH_ARG("--avalon7-th-ms",
+		     set_int_0_to_65535, opt_show_intval, &opt_avalon7_th_ms,
+		     "Set A3212 th ms value"),
+	OPT_WITH_ARG("--avalon7-th-timeout",
+		     opt_set_uintval, opt_show_uintval, &opt_avalon7_th_timeout,
+		     "Set A3212 th timeout value"),
+	OPT_WITHOUT_ARG("--avalon7-iic-detect",
+		     opt_set_bool, &opt_avalon7_iic_detect,
+		     "Enable Avalon7 detect through iic controller"),
+	OPT_WITH_ARG("--avalon7-nonce-mask",
+		     set_int_24_to_32, opt_show_intval, &opt_avalon7_nonce_mask,
+		     "Set A3212 nonce mask, range 24-32."),
+	OPT_WITHOUT_ARG("--no-avalon7-asic-debug",
+		     opt_set_invbool, &opt_avalon7_asic_debug,
+		     "Disable A3212 debug."),
+#endif
+#ifdef USE_AVALON8
+	OPT_WITH_CBARG("--avalon8-voltage-level",
+		     set_avalon8_voltage_level, NULL, &opt_set_avalon8_voltage_level,
+		     "Set Avalon8 default level of core voltage, range:[0, 15], step: 1"),
+	OPT_WITH_CBARG("--avalon8-voltage-level-offset",
+		     set_avalon8_voltage_level_offset, NULL, &opt_set_avalon8_voltage_level_offset,
+		     "Set Avalon8 default offset of core voltage level, range:[-2, 1], step: 1"),
+	OPT_WITH_CBARG("--avalon8-freq",
+		     set_avalon8_freq, NULL, &opt_set_avalon8_freq,
+		     "Set Avalon8 default frequency, range:[25, 1200], step: 25, example: 800"),
+	OPT_WITH_ARG("--avalon8-freq-sel",
+		     set_int_0_to_3, opt_show_intval, &opt_avalon8_freq_sel,
+		     "Set Avalon8 default frequency select, range:[0, 3], step: 1, example: 3"),
+	OPT_WITH_CBARG("--avalon8-fan",
+		     set_avalon8_fan, NULL, &opt_set_avalon8_fan,
+		     "Set Avalon8 target fan speed, range:[0, 100], step: 1, example: 0-100"),
+	OPT_WITH_ARG("--avalon8-temp",
+		     set_int_0_to_100, opt_show_intval, &opt_avalon8_temp_target,
+		     "Set Avalon8 target temperature, range:[0, 100]"),
+	OPT_WITH_ARG("--avalon8-polling-delay",
+		     set_int_1_to_65535, opt_show_intval, &opt_avalon8_polling_delay,
+		     "Set Avalon8 polling delay value (ms)"),
+	OPT_WITH_ARG("--avalon8-aucspeed",
+		     opt_set_intval, opt_show_intval, &opt_avalon8_aucspeed,
+		     "Set AUC3 IIC bus speed"),
+	OPT_WITH_ARG("--avalon8-aucxdelay",
+		     opt_set_intval, opt_show_intval, &opt_avalon8_aucxdelay,
+		     "Set AUC3 IIC xfer read delay, 4800 ~= 1ms"),
+	OPT_WITH_ARG("--avalon8-smart-speed",
+		     opt_set_intval, opt_show_intval, &opt_avalon8_smart_speed,
+		     "Set Avalon8 smart speed, range 0-1. 0 means Disable"),
+	OPT_WITH_ARG("--avalon8-th-pass",
+		     set_int_0_to_65535, opt_show_intval, &opt_avalon8_th_pass,
+		     "Set A3210 th pass value"),
+	OPT_WITH_ARG("--avalon8-th-fail",
+		     set_int_0_to_65535, opt_show_intval, &opt_avalon8_th_fail,
+		     "Set A3210 th fail value"),
+	OPT_WITH_ARG("--avalon8-th-init",
+		     set_int_0_to_65535, opt_show_intval, &opt_avalon8_th_init,
+		     "Set A3210 th init value"),
+	OPT_WITH_ARG("--avalon8-th-ms",
+		     set_int_0_to_65535, opt_show_intval, &opt_avalon8_th_ms,
+		     "Set A3210 th ms value"),
+	OPT_WITH_ARG("--avalon8-th-timeout",
+		     opt_set_uintval, opt_show_uintval, &opt_avalon8_th_timeout,
+		     "Set A3210 th timeout value"),
+	OPT_WITH_ARG("--avalon8-th-add",
+		     set_int_0_to_1, opt_show_intval, &opt_avalon8_th_add,
+		     "Set A3210 th add value"),
+	OPT_WITHOUT_ARG("--avalon8-iic-detect",
+		     opt_set_bool, &opt_avalon8_iic_detect,
+		     "Enable Avalon8 detect through iic controller"),
+	OPT_WITH_ARG("--avalon8-nonce-mask",
+		     set_int_24_to_32, opt_show_intval, &opt_avalon8_nonce_mask,
+		     "Set A3210 nonce mask, range 24-32."),
+	OPT_WITH_ARG("--avalon8-nonce-check",
+		     set_int_0_to_1, opt_show_intval, &opt_avalon8_nonce_check,
+		     "Set A3210 nonce check, range 0-1."),
+	OPT_WITH_ARG("--avalon8-roll-enable",
+		     set_int_0_to_1, opt_show_intval, &opt_avalon8_roll_enable,
+		     "Set A3210 roll enable, range 0-1."),
+	OPT_WITH_ARG("--avalon8-mux-l2h",
+		     set_int_0_to_2, opt_show_intval, &opt_avalon8_mux_l2h,
+		     "Set Avalon8 mux l2h, range 0-2."),
+	OPT_WITH_ARG("--avalon8-mux-h2l",
+		     set_int_0_to_1, opt_show_intval, &opt_avalon8_mux_h2l,
+		     "Set Avalon8 mux h2l, range 0-1."),
+	OPT_WITH_ARG("--avalon8-h2ltime0-spd",
+		     set_int_0_to_255, opt_show_intval, &opt_avalon8_h2ltime0_spd,
+		     "Set Avalon8 h2ltime0 spd, range 0-255."),
+	OPT_WITH_ARG("--avalon8-spdlow",
+		     set_int_0_to_3, opt_show_intval, &opt_avalon8_spdlow,
+		     "Set Avalon8 spdlow, range 0-3."),
+	OPT_WITH_ARG("--avalon8-spdhigh",
+		     set_int_0_to_3, opt_show_intval, &opt_avalon8_spdhigh,
+		     "Set Avalon8 spdhigh, range 0-3."),
+	OPT_WITH_CBARG("--avalon8-cinfo-asic",
+		     set_avalon8_asic_otp, NULL, &opt_set_avalon8_asic_otp,
+		     "Set Avalon8 cinfo asic index, range:[0, 25], step: 1"),
+	OPT_WITH_ARG("--avalon8-pid-p",
+		     set_int_0_to_9999, opt_show_intval, &opt_avalon8_pid_p,
+		     "Set Avalon8 pid-p, range 0-9999."),
+	OPT_WITH_ARG("--avalon8-pid-i",
+		     set_int_0_to_9999, opt_show_intval, &opt_avalon8_pid_i,
+		     "Set Avalon8 pid-i, range 0-9999."),
+	OPT_WITH_ARG("--avalon8-pid-d",
+		     set_int_0_to_9999, opt_show_intval, &opt_avalon8_pid_d,
+		     "Set Avalon8 pid-d, range 0-9999."),
 #endif
 #ifdef USE_AVALON_MINER
 	OPT_WITH_CBARG("--avalonm-voltage",
@@ -1422,6 +1801,81 @@ static struct opt_table opt_config_table[] = {
 		     set_int_0_to_100, opt_show_intval, &opt_bxm_bits,
 		     "Set BXM bits for overclocking"),
 #endif
+#ifdef USE_BITFURY16
+	OPT_WITHOUT_ARG("--bf16-set-clock",
+			opt_set_bool, &opt_bf16_set_clock,
+			"Set clock to all chips"),
+	OPT_WITH_ARG("--bf16-test-chip",
+			opt_set_charp, NULL, &opt_bf16_test_chip,
+			"Test BF16 chip communication: [board_id:bcm250_id:chip_id]"),
+	OPT_WITH_ARG("--bf16-clock",
+			opt_set_charp, NULL, &opt_bf16_clock,
+			"BF16 chips clock value"),
+	OPT_WITH_ARG("--bf16-renonce-clock",
+			opt_set_charp, NULL, &opt_bf16_renonce_clock,
+			"BF16 renonce chip clock value"),
+	OPT_WITHOUT_ARG("--bf16-enable-stats",
+			opt_set_bool, &opt_bf16_stats_enabled,
+			"Enable statistics thread"),
+	OPT_WITHOUT_ARG("--bf16-disable-power-management",
+			opt_set_bool, &opt_bf16_power_management_disabled,
+			"Disable automatic power management"),
+	OPT_WITH_ARG("--bf16-renonce",
+			set_int_0_to_2, NULL, &opt_bf16_renonce,
+			"Renonce functionality: 0 - disabled, 1 - one chip, 2 - chip per board"),
+#ifdef MINER_X5
+	OPT_WITHOUT_ARG("--bf16-manual-pid-enable",
+			opt_set_bool, &opt_bf16_manual_pid_enabled,
+			"Enable manual PID regulator"),
+#endif
+#ifdef MINER_X6
+	OPT_WITHOUT_ARG("--bf16-manual-pid-disable",
+			opt_set_bool, &opt_bf16_manual_pid_disabled,
+			"Disable manual PID regulator"),
+#endif
+	OPT_WITH_ARG("--bf16-fan-speed",
+		     set_int_0_to_100, NULL, &opt_bf16_fan_speed,
+		     "Set fan speed in '%' range (0 - 100)"),
+	OPT_WITH_ARG("--bf16-target-temp",
+		     set_int_0_to_100, NULL, &opt_bf16_target_temp,
+		     "Set control board target temperature range (0 - 100)"),
+	OPT_WITH_ARG("--bf16-alarm-temp",
+		     set_int_0_to_100, NULL, &opt_bf16_alarm_temp,
+		     "Set control board alarm temperature range (0 - 100)"),
+#endif
+#ifdef USE_BITMAIN_SOC
+	OPT_WITH_ARG("--version-file",
+	set_version_path, NULL, opt_hidden,
+	"Set miner version file"),
+	
+	OPT_WITHOUT_ARG("--bitmain-fan-ctrl",
+	opt_set_bool, &opt_bitmain_fan_ctrl,
+	"Enable bitmain miner fan controlling"),
+
+	OPT_WITH_ARG("--bitmain-fan-pwm",
+	set_int_0_to_100, opt_show_intval, &opt_bitmain_fan_pwm,
+	"Set bitmain fan pwm percentage 0~100"),
+
+	OPT_WITH_ARG("--bitmain-freq",
+	set_int_0_to_9999,opt_show_intval, &opt_bitmain_soc_freq,
+	"Set frequency"),
+
+	OPT_WITH_ARG("--bitmain-voltage",
+	set_int_0_to_9999,opt_show_intval, &opt_bitmain_soc_voltage,
+	"Set voltage"),
+
+	OPT_WITHOUT_ARG("--fixed-freq",
+	opt_set_bool, &opt_fixed_freq,
+	"Set bitmain miner use fixed freq"),
+
+	OPT_WITHOUT_ARG("--no-pre-heat",
+	opt_set_false, &opt_pre_heat,
+	"Set bitmain miner doesn't pre heat"),
+
+	OPT_WITH_ARG("--multi-version",
+	opt_set_intval, NULL, &opt_multi_version,
+	"Multi version mining!"),
+#endif
 #ifdef USE_BLOCKERUPTER
         OPT_WITH_ARG("--bet-clk",
                      opt_set_intval, opt_show_intval, &opt_bet_clk,
@@ -1434,6 +1888,11 @@ static struct opt_table opt_config_table[] = {
 	OPT_WITH_ARG("--btc-sig",
 		     opt_set_charp, NULL, &opt_btc_sig,
 		     "Set signature to add to coinbase when solo mining (optional)"),
+#endif
+#ifdef USE_ICARUS
+	OPT_WITH_ARG("--compac-freq",
+		     set_float_100_to_500, &opt_show_floatval, &opt_compac_freq,
+		     "Set GekkoScience Compac frequency in MHz, range 100-500"),
 #endif
 #ifdef HAVE_CURSES
 	OPT_WITHOUT_ARG("--compact",
@@ -1451,9 +1910,106 @@ static struct opt_table opt_config_table[] = {
 	OPT_WITHOUT_ARG("--debug|-D",
 		     enable_debug, &opt_debug,
 		     "Enable debug output"),
+#ifdef HAVE_CURSES
+	OPT_WITHOUT_ARG("--decode",
+			opt_set_bool, &opt_decode,
+			"Decode 2nd pool stratum coinbase transactions (1st must be bitcoind) and exit"),
+#endif
 	OPT_WITHOUT_ARG("--disable-rejecting",
 			opt_set_bool, &opt_disable_pool,
 			"Automatically disable pools that continually reject shares"),
+#ifdef USE_DRAGONMINT_T1
+	OPT_WITH_ARG("--dragonmint-t1-options",
+		     opt_set_charp, NULL, &opt_dragonmint_t1_options,
+	             "Dragonmint T1 options ref_clk_khz:sys_clk_khz:spi_clk_khz:override_chip_num"),
+	OPT_WITHOUT_ARG("--T1efficient",
+			opt_set_bool, &opt_T1_efficient,
+		        "Tune Dragonmint T1 per chain voltage and frequency for optimal efficiency"),
+	OPT_WITHOUT_ARG("--T1factory",
+			opt_set_invbool, &opt_T1auto,
+		        opt_hidden),
+	OPT_WITHOUT_ARG("--T1noauto",
+			opt_set_invbool, &opt_T1auto,
+			"Disable Dragonmint T1 per chain auto voltage and frequency tuning"),
+	OPT_WITHOUT_ARG("--T1performance",
+			opt_set_bool, &opt_T1_performance,
+		        "Tune Dragonmint T1 per chain voltage and frequency for maximum performance"),
+	OPT_WITH_ARG("--T1fantarget",
+			opt_set_intval, opt_show_intval, &opt_T1_target,
+			"Throttle T1 frequency to keep fan less than target fan speed"),
+	OPT_WITH_ARG("--T1Pll1",
+		     set_int_0_to_9999, opt_show_intval, &opt_T1Pll[0],
+	            "Set PLL Clock 1 in Dragonmint T1 broad 1 chip (-1: 1000MHz, >0:Lookup PLL table)"),
+	OPT_WITH_ARG("--T1Pll2",
+		     set_int_0_to_9999, opt_show_intval, &opt_T1Pll[1],
+	            "Set PLL Clock 2 in Dragonmint T1 broad 1 chip (-1: 1000MHz, >0:Lookup PLL table)"),
+	OPT_WITH_ARG("--T1Pll3",
+		     set_int_0_to_9999, opt_show_intval, &opt_T1Pll[2],
+	            "Set PLL Clock 3 in Dragonmint T1 broad 1 chip (-1: 1000MHz, >0:Lookup PLL table)"),
+	OPT_WITH_ARG("--T1Pll4",
+		     set_int_0_to_9999, opt_show_intval, &opt_T1Pll[3],
+	            "Set PLL Clock 4 in Dragonmint T1 broad 1 chip (-1: 1000MHz, >0:Lookup PLL table)"),
+	OPT_WITH_ARG("--T1Pll5",
+		     set_int_0_to_9999, opt_show_intval, &opt_T1Pll[4],
+	            "Set PLL Clock 5 in Dragonmint T1 broad 1 chip (-1: 1000MHz, >0:Lookup PLL table)"),
+	OPT_WITH_ARG("--T1Pll6",
+		     set_int_0_to_9999, opt_show_intval, &opt_T1Pll[5],
+	            "Set PLL Clock 6 in Dragonmint T1 broad 1 chip (-1: 1000MHz, >0:Lookup PLL table)"),
+	OPT_WITH_ARG("--T1Pll7",
+		     set_int_0_to_9999, opt_show_intval, &opt_T1Pll[6],
+	            "Set PLL Clock 7 in Dragonmint T1 broad 1 chip (-1: 1000MHz, >0:Lookup PLL table)"),
+	OPT_WITH_ARG("--T1Pll8",
+		     set_int_0_to_9999, opt_show_intval, &opt_T1Pll[7],
+	            "Set PLL Clock 8 in Dragonmint T1 broad 1 chip (-1: 1000MHz, >0:Lookup PLL table)"),
+	OPT_WITH_ARG("--T1Volt1",
+	     set_int_voltage, opt_show_intval, &opt_T1Vol[0],
+	     "Dragonmint T1 set voltage 1 - VID overrides if set (390-425)"),
+	OPT_WITH_ARG("--T1Volt2",
+	     set_int_voltage, opt_show_intval, &opt_T1Vol[1],
+	     "Dragonmint T1 set voltage 2 - VID overrides if set (390-425)"),
+	OPT_WITH_ARG("--T1Volt3",
+	     set_int_voltage, opt_show_intval, &opt_T1Vol[2],
+	     "Dragonmint T1 set voltage 3 - VID overrides if set (390-425)"),
+	OPT_WITH_ARG("--T1Volt4",
+	     set_int_voltage, opt_show_intval, &opt_T1Vol[3],
+	     "Dragonmint T1 set voltage 4 - VID overrides if set (390-425)"),
+	OPT_WITH_ARG("--T1Volt5",
+	     set_int_voltage, opt_show_intval, &opt_T1Vol[4],
+	     "Dragonmint T1 set voltage 5 - VID overrides if set (390-425)"),
+	OPT_WITH_ARG("--T1Volt6",
+	     set_int_voltage, opt_show_intval, &opt_T1Vol[5],
+	     "Dragonmint T1 set voltage 6 - VID overrides if set (390-425)"),
+	OPT_WITH_ARG("--T1Volt7",
+	     set_int_voltage, opt_show_intval, &opt_T1Vol[6],
+	     "Dragonmint T1 set voltage 7 - VID overrides if set (390-425)"),
+	OPT_WITH_ARG("--T1Volt8",
+	     set_int_voltage, opt_show_intval, &opt_T1Vol[7],
+	     "Dragonmint T1 set voltage 8 - VID overrides if set (390-425)"),
+	OPT_WITH_ARG("--T1VID1",
+	     set_int_1_to_31, opt_show_intval, &opt_T1VID[0],
+	     "Dragonmint T1 set VID 1 in noauto - Overrides voltage if set (1-31)"),
+	OPT_WITH_ARG("--T1VID2",
+	     set_int_1_to_31, opt_show_intval, &opt_T1VID[1],
+	     "Dragonmint T1 set VID 2 in noauto - Overrides voltage if set (1-31)"),
+	OPT_WITH_ARG("--T1VID3",
+	     set_int_1_to_31, opt_show_intval, &opt_T1VID[2],
+	     "Dragonmint T1 set VID 3 in noauto - Overrides voltage if set (1-31)"),
+	OPT_WITH_ARG("--T1VID4",
+	     set_int_1_to_31, opt_show_intval, &opt_T1VID[3],
+	     "Dragonmint T1 set VID 4 in noauto - Overrides voltage if set (1-31)"),
+	OPT_WITH_ARG("--T1VID5",
+	     set_int_1_to_31, opt_show_intval, &opt_T1VID[4],
+	     "Dragonmint T1 set VID 5 in noauto - Overrides voltage if set (1-31)"),
+	OPT_WITH_ARG("--T1VID6",
+	     set_int_1_to_31, opt_show_intval, &opt_T1VID[5],
+	     "Dragonmint T1 set VID 6 in noauto - Overrides voltage if set (1-31)"),
+	OPT_WITH_ARG("--T1VID7",
+	     set_int_1_to_31, opt_show_intval, &opt_T1VID[6],
+	     "Dragonmint T1 set VID 7 in noauto - Overrides voltage if set (1-31)"),
+	OPT_WITH_ARG("--T1VID8",
+	     set_int_1_to_31, opt_show_intval, &opt_T1VID[7],
+	     "Dragonmint T1 set VID 8 in noauto - Overrides voltage if set (1-31)"),
+#endif
 #ifdef USE_DRILLBIT
         OPT_WITH_ARG("--drillbit-options",
 		     opt_set_charp, NULL, &opt_drillbit_options,
@@ -1754,18 +2310,21 @@ static char *parse_config(json_t *config, bool fileconf)
 		fileconf_load = 1;
 
 	for (opt = opt_config_table; opt->type != OPT_END; opt++) {
-		char *p, *name;
+		char *p, *saved, *name;
 
 		/* We don't handle subtables. */
 		assert(!(opt->type & OPT_SUBTABLE));
 
-		if (!opt->names)
+		if (!opt->names || !strlen(opt->names))
 			continue;
 
 		/* Pull apart the option name(s). */
 		name = strdup(opt->names);
-		for (p = strtok(name, "|"); p; p = strtok(NULL, "|")) {
+		for (p = strtok_r(name, "|", &saved); p != NULL; p = strtok_r(NULL, "|", &saved)) {
 			char *err = NULL;
+
+			if (strlen(p) < 3)
+				continue;
 
 			/* Ignore short options. */
 			if (p[1] != '-')
@@ -1927,6 +2486,12 @@ static char *opt_verusage_and_exit(const char *extra)
 #ifdef USE_AVALON4
 		"avalon4 "
 #endif
+#ifdef USE_AVALON7
+		"avalon7 "
+#endif
+#ifdef USE_AVALON8
+		"avalon8 "
+#endif
 #ifdef USE_AVALON_MINER
 		"avalon miner"
 #endif
@@ -1938,6 +2503,9 @@ static char *opt_verusage_and_exit(const char *extra)
 #endif
 #ifdef USE_BITFURY
 		"bitfury "
+#endif
+#ifdef USE_BITFURY16
+		"bitfury16 "
 #endif
 #ifdef USE_COINTERRA
 		"cointerra "
@@ -2016,12 +2584,38 @@ static struct opt_table opt_cmdline_table[] = {
 	OPT_ENDTABLE
 };
 
-static void calc_midstate(struct work *work)
+static void calc_midstate(struct pool *pool, struct work *work)
 {
 	unsigned char data[64];
 	uint32_t *data32 = (uint32_t *)data;
 	sha256_ctx ctx;
 
+	if (pool->vmask) {
+		/* This would only be set if the driver requested a vmask and
+		 * the pool has a valid version mask. */
+		memcpy(work->data, &(pool->vmask_001[2]), 4);
+		flip64(data32, work->data);
+		sha256_init(&ctx);
+		sha256_update(&ctx, data, 64);
+		cg_memcpy(work->midstate1, ctx.h, 32);
+		endian_flip32(work->midstate1, work->midstate1);
+
+		memcpy(work->data, &(pool->vmask_001[4]), 4);
+		flip64(data32, work->data);
+		sha256_init(&ctx);
+		sha256_update(&ctx, data, 64);
+		cg_memcpy(work->midstate2, ctx.h, 32);
+		endian_flip32(work->midstate2, work->midstate2);
+
+		memcpy(work->data, &(pool->vmask_001[8]), 4);
+		flip64(data32, work->data);
+		sha256_init(&ctx);
+		sha256_update(&ctx, data, 64);
+		cg_memcpy(work->midstate3, ctx.h, 32);
+		endian_flip32(work->midstate3, work->midstate3);
+
+		memcpy(work->data, &(pool->vmask_001[0]), 4);
+	}
 	flip64(data32, work->data);
 	sha256_init(&ctx);
 	sha256_update(&ctx, data, 64);
@@ -2196,7 +2790,7 @@ static void gen_gbt_work(struct pool *pool, struct work *work)
 		free(header);
 	}
 
-	calc_midstate(work);
+	calc_midstate(pool, work);
 	local_work++;
 	work->pool = pool;
 	work->gbt = true;
@@ -2339,13 +2933,21 @@ static void gbt_merkle_bins(struct pool *pool, json_t *transaction_arr)
 		for (i = 0; i < pool->transactions; i++) {
 			unsigned char binswap[32];
 			const char *hash;
+			const char *txid;
 
 			arr_val = json_array_get(transaction_arr, i);
+			txid = json_string_value(json_object_get(arr_val, "txid"));
 			hash = json_string_value(json_object_get(arr_val, "hash"));
+			if(!txid)
+				txid = hash;
 			txn = json_string_value(json_object_get(arr_val, "data"));
 			len = strlen(txn);
 			cg_memcpy(pool->txn_data + ofs, txn, len);
 			ofs += len;
+#if 0
+			// This logic no longer works post-segwit. The txids will always need to be sent,
+			// as the full txns will also contain witness data that must be omitted in these
+			// hashes.
 			if (!hash) {
 				unsigned char *txn_bin;
 				int txn_len;
@@ -2358,8 +2960,13 @@ static void gbt_merkle_bins(struct pool *pool, json_t *transaction_arr)
 				gen_hash(txn_bin, hashbin + 32 + 32 * i, txn_len);
 				continue;
 			}
-			if (!hex2bin(binswap, hash, 32)) {
-				applog(LOG_ERR, "Failed to hex2bin hash in gbt_merkle_bins");
+#endif
+			if (!txid) {
+				applog(LOG_ERR, "missing txid in gbt_merkle_bins");
+				return;
+			}
+			if (!hex2bin(binswap, txid, 32)) {
+				applog(LOG_ERR, "Failed to hex2bin txid in gbt_merkle_bins");
 				return;
 			}
 			swab256(hashbin + 32 + 32 * i, binswap);
@@ -2395,6 +3002,60 @@ static void gbt_merkle_bins(struct pool *pool, json_t *transaction_arr)
 		pool->pool_no);
 }
 
+static const unsigned char witness_nonce[32] = {0};
+static const int witness_nonce_size = sizeof(witness_nonce);
+static const unsigned char witness_header[] = {0xaa, 0x21, 0xa9, 0xed};
+static const int witness_header_size = sizeof(witness_header);
+
+static bool gbt_witness_data(json_t *transaction_arr, unsigned char* witnessdata, int avail_size)
+{
+	int i, binlen, txncount = json_array_size(transaction_arr);
+	unsigned char *hashbin;
+	const char *hash;
+	json_t *arr_val;
+
+	binlen = txncount * 32 + 32;
+	hashbin = alloca(binlen + 32);
+	memset(hashbin, 0, 32);
+
+	if (avail_size < witness_header_size + 32)
+		return false;
+
+	for (i = 0; i < txncount; i++) {
+		unsigned char binswap[32];
+
+		arr_val = json_array_get(transaction_arr, i);
+		hash = json_string_value(json_object_get(arr_val, "hash"));
+		if (unlikely(!hash)) {
+			applog(LOG_ERR, "Hash missing for transaction");
+			return false;
+		}
+		if (!hex2bin(binswap, hash, 32)) {
+			applog(LOG_ERR, "Failed to hex2bin hash in gbt_witness_data");
+			return false;
+		}
+		swab256(hashbin + 32 + 32 * i, binswap);
+	}
+
+	// Build merkle root (copied from libblkmaker)
+	for (txncount++ ; txncount > 1 ; txncount /= 2) {
+		if (txncount % 2) {
+			// Odd number, duplicate the last
+			memcpy(hashbin + 32 * txncount, hashbin + 32 * (txncount - 1), 32);
+			txncount++;
+		}
+		for (i = 0; i < txncount; i += 2) {
+			// We overlap input and output here, on the first pair
+			gen_hash(hashbin + 32 * i, hashbin + 32 * (i / 2), 64);
+		}
+	}
+
+	memcpy(witnessdata, witness_header, witness_header_size);
+	memcpy(hashbin + 32, &witness_nonce, witness_nonce_size);
+	gen_hash(hashbin, witnessdata + witness_header_size, 32 + witness_nonce_size);
+	return true;
+}
+
 static double diff_from_target(void *target);
 
 static const char scriptsig_header[] = "01000000010000000000000000000000000000000000000000000000000000000000000000ffffffff";
@@ -2402,7 +3063,7 @@ static unsigned char scriptsig_header_bin[41];
 
 static bool gbt_solo_decode(struct pool *pool, json_t *res_val)
 {
-	json_t *transaction_arr, *coinbase_aux;
+	json_t *transaction_arr, *rules_arr, *coinbase_aux;
 	const char *previousblockhash;
 	unsigned char hash_swap[32];
 	struct timeval now;
@@ -2410,17 +3071,23 @@ static bool gbt_solo_decode(struct pool *pool, json_t *res_val)
 	uint64_t coinbasevalue;
 	const char *flags;
 	const char *bits;
-	char header[228];
+	char header[260];
 	int ofs = 0, len;
 	uint64_t *u64;
 	uint32_t *u32;
 	int version;
 	int curtime;
 	int height;
+	int witness_txout_len = 0;
+	int witnessdata_size = 0;
+	bool insert_witness = false;
+	unsigned char witnessdata[36] = {};
+	const char *default_witness_commitment;
 
 	previousblockhash = json_string_value(json_object_get(res_val, "previousblockhash"));
 	target = json_string_value(json_object_get(res_val, "target"));
 	transaction_arr = json_object_get(res_val, "transactions");
+	rules_arr = json_object_get(res_val, "rules");
 	version = json_integer_value(json_object_get(res_val, "version"));
 	curtime = json_integer_value(json_object_get(res_val, "curtime"));
 	bits = json_string_value(json_object_get(res_val, "bits"));
@@ -2428,11 +3095,31 @@ static bool gbt_solo_decode(struct pool *pool, json_t *res_val)
 	coinbasevalue = json_integer_value(json_object_get(res_val, "coinbasevalue"));
 	coinbase_aux = json_object_get(res_val, "coinbaseaux");
 	flags = json_string_value(json_object_get(coinbase_aux, "flags"));
+	default_witness_commitment = json_string_value(json_object_get(res_val, "default_witness_commitment"));
 
 	if (!previousblockhash || !target || !version || !curtime || !bits || !coinbase_aux || !flags) {
 		applog(LOG_ERR, "Pool %d JSON failed to decode GBT", pool->pool_no);
 		return false;
 	}
+
+	if (rules_arr) {
+		int i;
+		int rule_count = json_array_size(rules_arr);
+		const char *rule;
+
+		for (i = 0; i < rule_count; i++) {
+			rule = json_string_value(json_array_get(rules_arr, i));
+			if (!rule)
+				continue;
+			if (*rule == '!')
+				rule++;
+			if (strncmp(rule, "segwit", 6)) {
+				insert_witness = true;
+				break;
+			}
+		}
+	}
+
 
 	applog(LOG_DEBUG, "previousblockhash: %s", previousblockhash);
 	applog(LOG_DEBUG, "target: %s", target);
@@ -2459,6 +3146,25 @@ static bool gbt_solo_decode(struct pool *pool, json_t *res_val)
 	pool->nValue = coinbasevalue;
 	hex2bin((unsigned char *)&pool->gbt_bits, bits, 4);
 	gbt_merkle_bins(pool, transaction_arr);
+
+	if (insert_witness) {
+		char witness_str[sizeof(witnessdata) * 2];
+
+		witnessdata_size = sizeof(witnessdata);
+		if (!gbt_witness_data(transaction_arr, witnessdata, witnessdata_size)) {
+			applog(LOG_ERR, "error calculating witness data");
+			return false;
+		}
+		__bin2hex(witness_str, witnessdata, witnessdata_size);
+		applog(LOG_DEBUG, "calculated witness data: %s", witness_str);
+		if (default_witness_commitment) {
+			if (strncmp(witness_str, default_witness_commitment + 4, witnessdata_size * 2) != 0) {
+				applog(LOG_ERR, "bad witness data. %s != %s", default_witness_commitment + 4, witness_str);
+				return false;
+			}
+		}
+	}
+
 	if (pool->transactions < 3)
 		pool->bad_work++;
 	pool->height = height;
@@ -2509,24 +3215,42 @@ static bool gbt_solo_decode(struct pool *pool, json_t *res_val)
 	len = 	41 // prefix
 		+ ofs // Template length
 		+ 4 // txin sequence no
-		+ 1 // transactions
+		+ 1 // txouts
 		+ 8 // value
 		+ 1 + 25 // txout
 		+ 4; // lock
+
+	if (insert_witness) {
+		len +=  8 //value
+			+   1 + 2 + witnessdata_size; // total scriptPubKey size + OP_RETURN + push size + data
+	}
+
 	free(pool->coinbase);
 	pool->coinbase = cgcalloc(len, 1);
 	cg_memcpy(pool->coinbase + 41, pool->scriptsig_base, ofs);
 	cg_memcpy(pool->coinbase + 41 + ofs, "\xff\xff\xff\xff", 4);
-	pool->coinbase[41 + ofs + 4] = 1;
+	pool->coinbase[41 + ofs + 4] = insert_witness ? 2 : 1;
 	u64 = (uint64_t *)&(pool->coinbase[41 + ofs + 4 + 1]);
 	*u64 = htole64(coinbasevalue);
 
+	if (insert_witness) {
+		unsigned char *witness = &pool->coinbase[41 + ofs + 4 + 1 + 8 + 1 + 25];
+
+		memset(witness, 0, 8);
+		witness_txout_len += 8;
+		witness[witness_txout_len++] = witnessdata_size + 2; // total scriptPubKey size
+		witness[witness_txout_len++] = 0x6a; // OP_RETURN
+		witness[witness_txout_len++] = witnessdata_size;
+		memcpy(&witness[witness_txout_len], witnessdata, witnessdata_size);
+		witness_txout_len += witnessdata_size;
+	}
+
 	pool->nonce2 = 0;
 	pool->n2size = 4;
-	pool->coinbase_len = 41 + ofs + 4 + 1 + 8 + 1 + 25 + 4;
+	pool->coinbase_len = 41 + ofs + 4 + 1 + 8 + 1 + 25 + witness_txout_len + 4;
 	cg_wunlock(&pool->gbt_lock);
 
-	snprintf(header, 225, "%s%s%s%s%s%s%s",
+	snprintf(header, 257, "%s%s%s%s%s%s%s",
 		 pool->bbversion,
 		 pool->prev_hash,
 		 "0000000000000000000000000000000000000000000000000000000000000000",
@@ -2534,7 +3258,7 @@ static bool gbt_solo_decode(struct pool *pool, json_t *res_val)
 		 pool->nbit,
 		 "00000000", /* nonce */
 		 workpadding);
-	if (unlikely(!hex2bin(pool->header_bin, header, 112)))
+	if (unlikely(!hex2bin(pool->header_bin, header, 128)))
 		quit(1, "Failed to hex2bin header in gbt_solo_decode");
 
 	return true;
@@ -2554,21 +3278,16 @@ static bool work_decode(struct pool *pool, struct work *work, json_t *val)
 	if (pool->gbt_solo) {
 		if (unlikely(!gbt_solo_decode(pool, res_val)))
 			goto out;
-		ret = true;
+		goto out_true;
+	}
+	if (unlikely(!gbt_decode(pool, res_val)))
 		goto out;
-	}
-	if (unlikely(!gbt_decode(pool, res_val))) {
-			goto out;
-		work->gbt = true;
-		ret = true;
-	}
-
+	work->gbt = true;
 	memset(work->hash, 0, sizeof(work->hash));
 
 	cgtime(&work->tv_staged);
-
+out_true:
 	ret = true;
-
 out:
 	return ret;
 }
@@ -2602,7 +3321,7 @@ static int __total_staged(void)
 {
 	return HASH_COUNT(staged_work);
 }
-
+#if defined(HAVE_LIBCURL) || defined(HAVE_CURSES)
 static int total_staged(void)
 {
 	int ret;
@@ -2613,6 +3332,7 @@ static int total_staged(void)
 
 	return ret;
 }
+#endif
 
 #ifdef HAVE_CURSES
 WINDOW *mainwin, *statuswin, *logwin;
@@ -3780,7 +4500,7 @@ static bool benchfile_get_work(struct work *work)
 
 			hex2bin(work->data, item, j >> 1);
 
-			calc_midstate(work);
+			calc_midstate(work->pool, work);
 
 			benchfile_work++;
 
@@ -3875,13 +4595,26 @@ static void kill_mining(void)
 		if (thr && PTH(thr) != 0L)
 			pth = &thr->pth;
 		thr_info_cancel(thr);
-#ifndef WIN32
 		if (pth && *pth)
 			pthread_join(*pth, NULL);
-#else
-		if (pth && pth->p)
+	}
+}
+
+static void wait_mining(void)
+{
+	struct thr_info *thr;
+	int i;
+
+	forcelog(LOG_DEBUG, "Waiting on mining threads");
+	/* Kill the mining threads*/
+	for (i = 0; i < mining_threads; i++) {
+		pthread_t *pth = NULL;
+
+		thr = get_thread(i);
+		if (thr && PTH(thr) != 0L)
+			pth = &thr->pth;
+		if (pth && *pth)
 			pthread_join(*pth, NULL);
-#endif
 	}
 }
 
@@ -3927,9 +4660,10 @@ static void __kill_work(void)
 		cgpu->shutdown = true;
 	}
 
-	sleep(1);
-
-	cg_completion_timeout(&kill_mining, NULL, 3000);
+	/* Give the threads a chance to shut down gracefully */
+	cg_completion_timeout(&wait_mining, NULL, 5000);
+	/* Kill the threads and wait for them to return if not */
+	cg_completion_timeout(&kill_mining, NULL, 5000);
 
 	/* Stop the others */
 	forcelog(LOG_DEBUG, "Killing off API thread");
@@ -3952,7 +4686,7 @@ static void __kill_work(void)
 /* This should be the common exit path */
 void kill_work(void)
 {
-	cg_completion_timeout(&__kill_work, NULL, 5000);
+	cg_completion_timeout(&__kill_work, NULL, 10000);
 
 	quit(0, "Shutdown signal received.");
 }
@@ -3962,6 +4696,22 @@ static
 const
 #endif
 char **initial_args;
+
+static void *raise_thread(void __maybe_unused *arg)
+{
+	raise(SIGTERM);
+	return NULL;
+}
+
+/* This provides a mechanism for driver threads to initiate a shutdown without
+ * the cyclical problem of the shutdown path being cancelled while the driver
+ * thread shuts down.*/
+void raise_cgminer(void)
+{
+	pthread_t pth;
+
+	pthread_create(&pth, NULL, raise_thread, NULL);
+}
 
 static void clean_up(bool restarting);
 
@@ -4031,6 +4781,29 @@ void roll_work(struct work *work)
 	/* Change the ntime field if this is stratum work */
 	if (work->ntime)
 		modify_ntime(work->ntime, 1);
+
+	/* This is now a different work item so it needs a different ID for the
+	 * hashtable */
+	work->id = total_work_inc();
+}
+
+void roll_work_ntime(struct work *work, int noffset)
+{
+	uint32_t *work_ntime;
+	uint32_t ntime;
+
+	work_ntime = (uint32_t *)(work->data + 68);
+	ntime = be32toh(*work_ntime);
+	ntime += noffset;
+	*work_ntime = htobe32(ntime);
+	local_work++;
+	work->rolls += noffset;
+	work->nonce = 0;
+	applog(LOG_DEBUG, "Successfully rolled work");
+
+	/* Change the ntime field if this is stratum work */
+	if (work->ntime)
+		modify_ntime(work->ntime, noffset);
 
 	/* This is now a different work item so it needs a different ID for the
 	 * hashtable */
@@ -4279,6 +5052,9 @@ static void _copy_work(struct work *work, const struct work *base_work, int noff
 	}
 	if (base_work->coinbase)
 		work->coinbase = strdup(base_work->coinbase);
+#ifdef USE_BITMAIN_SOC
+	work->version = base_work->version;
+#endif
 }
 
 void set_work_ntime(struct work *work, int ntime)
@@ -4567,16 +5343,12 @@ static void discard_stale(void)
  */
 int restart_wait(struct thr_info *thr, unsigned int mstime)
 {
-	struct timeval now, then, tdiff;
-	struct timespec abstime;
+	struct timespec abstime, tdiff;
 	int rc;
 
-	tdiff.tv_sec = mstime / 1000;
-	tdiff.tv_usec = mstime * 1000 - (tdiff.tv_sec * 1000000);
-	cgtime(&now);
-	timeradd(&now, &tdiff, &then);
-	abstime.tv_sec = then.tv_sec;
-	abstime.tv_nsec = then.tv_usec * 1000;
+	cgcond_time(&abstime);
+	ms_to_timespec(&tdiff, mstime);
+	timeraddspec(&abstime, &tdiff);
 
 	mutex_lock(&restart_lock);
 	if (thr->work_restart)
@@ -4634,7 +5406,7 @@ static void restart_threads(void)
 
 	cgtime(&restart_tv_start);
 	if (unlikely(pthread_create(&rthread, NULL, restart_thread, NULL)))
-		quit(1, "Failed to create restart thread");
+		quithere(1, "Failed to create restart thread errno=%d", errno);
 }
 
 static void signal_work_update(void)
@@ -4681,8 +5453,8 @@ static void set_blockdiff(const struct work *work)
 {
 	uint8_t pow = work->data[72];
 	int powdiff = (8 * (0x1d - 3)) - (8 * (pow - 3));
-	if (powdiff < 8)
-		powdiff = 8;
+	if (powdiff < 0)
+		powdiff = 0;
 	uint32_t diff32 = be32toh(*((uint32_t *)(work->data + 72))) & 0x00FFFFFF;
 	double numerator = 0xFFFFULL << powdiff;
 	double ddiff = numerator / (double)diff32;
@@ -4766,6 +5538,9 @@ static bool test_work_current(struct work *work)
 		pool->swork.clean = false;
 		work->longpoll = true;
 	}
+	if (pool->current_height != height) {
+		pool->current_height = height;
+	}
 	cg_wunlock(&pool->data_lock);
 
 	/* Search to see if this block exists yet and if not, consider it a
@@ -4786,13 +5561,15 @@ static bool test_work_current(struct work *work)
 				applog(LOG_NOTICE, "Stratum from pool %d detected new block at height %d",
 				       pool->pool_no, height);
 			} else {
-				applog(LOG_NOTICE, "%sLONGPOLL from pool %d detected new block",
-				       work->gbt ? "GBT " : "", work->pool->pool_no);
+				applog(LOG_NOTICE, "%sLONGPOLL from pool %d detected new block at height %d",
+				       work->gbt ? "GBT " : "", pool->pool_no, height);
 			}
 		} else if (have_longpoll && !pool->gbt_solo)
-			applog(LOG_NOTICE, "New block detected on network before pool notification");
+			applog(LOG_NOTICE, "New block detected on network before pool notification from pool %d at height %d",
+			       pool->pool_no, height);
 		else if (!pool->gbt_solo)
-			applog(LOG_NOTICE, "New block detected on network");
+			applog(LOG_NOTICE, "New block detected on network from pool %d at height %d",
+			       pool->pool_no, height);
 		restart_threads();
 	} else {
 		if (memcmp(pool->prev_block, bedata, 32)) {
@@ -4826,7 +5603,7 @@ static bool test_work_current(struct work *work)
 					       pool->pool_no);
 				} else {
 					applog(LOG_NOTICE, "%sLONGPOLL from pool %d requested work restart",
-					       work->gbt ? "GBT " : "", work->pool->pool_no);
+					       work->gbt ? "GBT " : "", pool->pool_no);
 				}
 				restart_threads();
 			}
@@ -5040,24 +5817,34 @@ void write_config(FILE *fcfg)
 			if (opt->type & OPT_HASARG &&
 			    ((void *)opt->cb_arg == (void *)opt_set_intval ||
 			     (void *)opt->cb_arg == (void *)set_int_0_to_9999 ||
+			     (void *)opt->cb_arg == (void *)set_int_0_to_65535 ||
 			     (void *)opt->cb_arg == (void *)set_int_1_to_65535 ||
+			     (void *)opt->cb_arg == (void *)set_int_0_to_5 ||
 			     (void *)opt->cb_arg == (void *)set_int_0_to_10 ||
 			     (void *)opt->cb_arg == (void *)set_int_1_to_10 ||
+			     (void *)opt->cb_arg == (void *)set_int_24_to_32 ||
 			     (void *)opt->cb_arg == (void *)set_int_0_to_100 ||
 			     (void *)opt->cb_arg == (void *)set_int_0_to_255 ||
 			     (void *)opt->cb_arg == (void *)set_int_1_to_255 ||
+			     (void *)opt->cb_arg == (void *)set_int_0_to_7680 ||
 			     (void *)opt->cb_arg == (void *)set_int_0_to_200 ||
 			     (void *)opt->cb_arg == (void *)set_int_0_to_4 ||
 			     (void *)opt->cb_arg == (void *)set_int_32_to_63 ||
 			     (void *)opt->cb_arg == (void *)set_int_22_to_75 ||
+#ifdef USE_DRAGONMINT_T1
+			     (void *)opt->cb_arg == (void *)set_int_voltage ||
+			     (void *)opt->cb_arg == (void *)set_int_1_to_31 ||
+#endif
+			     (void *)opt->cb_arg == (void *)set_int_1_to_60 ||
 			     (void *)opt->cb_arg == (void *)set_int_42_to_85)) {
 				fprintf(fcfg, ",\n\"%s\" : \"%d\"", p+2, *(int *)opt->u.arg);
 				continue;
 			}
 
 			if (opt->type & OPT_HASARG &&
-			    (((void *)opt->cb_arg == (void *)set_float_125_to_500) ||
-			     (void *)opt->cb_arg == (void *)set_float_100_to_250)) {
+			    ((void *)opt->cb_arg == (void *)set_float_125_to_500 ||
+			     (void *)opt->cb_arg == (void *)set_float_100_to_250 ||
+			     (void *)opt->cb_arg == (void *)set_float_100_to_500)) {
 				fprintf(fcfg, ",\n\"%s\" : \"%.1f\"", p+2, *(float *)opt->u.arg);
 				continue;
 			}
@@ -5108,7 +5895,20 @@ static time_t hashdisplay_t;
 void zero_stats(void)
 {
 	int i;
+#ifdef USE_BITMAIN_SOC
+	struct sysinfo sInfo;
+	if (sysinfo(&sInfo))
+	{
+		applog(LOG_INFO, "Failed to get sysinfo, errno:%u, reason:%s\n",
+			   errno, strerror(errno));
+		total_tv_start_sys=time(NULL);
+	}
+	else
+	{
+		total_tv_start_sys=sInfo.uptime;
+	}
 
+#endif
 	cgtime(&total_tv_start);
 	copy_time(&tv_hashmeter, &total_tv_start);
 	total_rolling = 0;
@@ -5116,6 +5916,9 @@ void zero_stats(void)
 	rolling5 = 0;
 	rolling15 = 0;
 	total_mhashes_done = 0;
+#ifdef USE_BITMAIN_SOC
+	new_total_mhashes_done = 0;
+#endif
 	total_getworks = 0;
 	total_accepted = 0;
 	total_rejected = 0;
@@ -5126,6 +5929,9 @@ void zero_stats(void)
 	total_go = 0;
 	total_ro = 0;
 	total_secs = 1.0;
+#ifdef USE_BITMAIN_SOC
+	new_total_secs = 1.0;
+#endif
 	total_diff1 = 0;
 	found_blocks = 0;
 	total_diff_accepted = 0;
@@ -5829,6 +6635,20 @@ static void hashmeter(int thr_id, uint64_t hashes_done)
 	time_t now_t;
 	int diff_t;
 
+#ifdef USE_BITMAIN_SOC
+	struct sysinfo sInfo;
+	if (sysinfo(&sInfo))
+	{
+		applog(LOG_INFO, "Failed to get sysinfo, errno:%u, reason:%s\n",
+			   errno, strerror(errno));
+		total_tv_end_sys=time(NULL);
+	}
+	else
+	{
+		total_tv_end_sys=sInfo.uptime;
+	}
+#endif
+
 	cgtime(&total_tv_end);
 	tv_tdiff = tdiff(&total_tv_end, &tv_hashmeter);
 	now_t = total_tv_end.tv_sec;
@@ -5903,7 +6723,11 @@ static void hashmeter(int thr_id, uint64_t hashes_done)
 	decay_time(&rolling5, hashes_done, tv_tdiff, 300.0);
 	decay_time(&rolling15, hashes_done, tv_tdiff, 900.0);
 	global_hashrate = llround(total_rolling) * 1000000;
+#ifndef USE_BITMAIN_SOC
 	total_secs = tdiff(&total_tv_end, &total_tv_start);
+#else
+	total_secs = total_tv_end_sys*1.0-total_tv_start_sys*1.0;
+#endif
 	if (showlog) {
 		char displayed_hashes[16], displayed_rolling[16];
 		char displayed_r1[16], displayed_r5[16], displayed_r15[16];
@@ -6300,7 +7124,7 @@ static void *stratum_sthread(void *userdata)
 		if (unlikely(pool->removed))
 			break;
 
-		work = tq_pop(pool->stratum_q, NULL);
+		work = tq_pop(pool->stratum_q);
 		if (unlikely(!work))
 			quit(1, "Stratum q returned empty work");
 
@@ -6341,9 +7165,15 @@ static void *stratum_sthread(void *userdata)
 		sshare->id = swork_id++;
 		mutex_unlock(&sshare_lock);
 
-		snprintf(s, sizeof(s),
-			"{\"params\": [\"%s\", \"%s\", \"%s\", \"%s\", \"%s\"], \"id\": %d, \"method\": \"mining.submit\"}",
-			pool->rpc_user, work->job_id, nonce2hex, work->ntime, noncehex, sshare->id);
+		if (pool->vmask) {
+			snprintf(s, sizeof(s),
+				 "{\"params\": [\"%s\", \"%s\", \"%s\", \"%s\", \"%s\", \"%s\"], \"id\": %d, \"method\": \"mining.submit\"}",
+				pool->rpc_user, work->job_id, nonce2hex, work->ntime, noncehex, pool->vmask_002[work->micro_job_id], sshare->id);
+		} else {
+			snprintf(s, sizeof(s),
+				"{\"params\": [\"%s\", \"%s\", \"%s\", \"%s\", \"%s\"], \"id\": %d, \"method\": \"mining.submit\"}",
+				pool->rpc_user, work->job_id, nonce2hex, work->ntime, noncehex, sshare->id);
+		}
 
 		applog(LOG_INFO, "Submitting share %08lx to pool %d",
 					(long unsigned int)htole32(hash32[6]), pool->pool_no);
@@ -6456,8 +7286,10 @@ static bool setup_gbt_solo(CURL *curl, struct pool *pool)
 	json_t *val = NULL, *res_val, *valid_val;
 
 	if (!opt_btc_address) {
-		applog(LOG_ERR, "No BTC address specified, unable to mine solo on %s",
-		       pool->rpc_url);
+		if (!opt_decode) {
+			applog(LOG_ERR, "No BTC address specified, unable to mine solo on %s",
+			       pool->rpc_url);
+		}
 		goto out;
 	}
 	snprintf(s, 256, "{\"id\": 1, \"method\": \"validateaddress\", \"params\": [\"%s\"]}\n", opt_btc_address);
@@ -6487,10 +7319,6 @@ static bool setup_gbt_solo(CURL *curl, struct pool *pool)
 		applog(LOG_DEBUG, "Pool %d coinbase %s", pool->pool_no, cb);
 		free(cb);
 	}
-	pool->gbt_curl = curl_easy_init();
-	if (unlikely(!pool->gbt_curl))
-		quit(1, "GBT CURL initialisation failed");
-
 out:
 	if (val)
 		json_decref(val);
@@ -6556,7 +7384,29 @@ retry_stratum:
 	if (!pool->probed) {
 		applog(LOG_DEBUG, "Probing for GBT support");
 		val = json_rpc_call(curl, pool->rpc_url, pool->rpc_userpass,
-				    gbt_req, true, false, &rolltime, pool, false);
+					gbt_req, true, false, &rolltime, pool, false);
+		if (val) {
+			json_t *rules_arr = json_object_get(val, "rules");
+
+			if (!gbt_check_rules(rules_arr, gbt_understood_rules)) {
+				applog(LOG_DEBUG, "Not all rules understood for GBT");
+				json_decref(val);
+				val = NULL;
+			}
+		}
+		if (!val) {
+			json_t *rules_arr;
+
+			applog(LOG_DEBUG, "Probing for GBT solo support");
+			val = json_rpc_call(curl, pool->rpc_url, pool->rpc_userpass,
+					gbt_solo_req, true, false, &rolltime, pool, false);
+			rules_arr = json_object_get(val, "rules");
+			if (!gbt_check_rules(rules_arr, gbt_solo_understood_rules)) {
+				applog(LOG_DEBUG, "Not all rules understood for GBT solo");
+				json_decref(val);
+				val = NULL;
+			}
+		}
 		if (val) {
 			bool append = false, submit = false, transactions = false;
 			json_t *res_val, *mutables;
@@ -6590,8 +7440,16 @@ retry_stratum:
 				pool->has_gbt = true;
 				pool->rpc_req = gbt_req;
 			} else if (transactions) {
-				pool->gbt_solo = true;
 				pool->rpc_req = gbt_solo_req;
+				/* Set up gbt_curl before setting gbt_solo
+				 * flag to prevent longpoll thread from
+				 * trying to use an un'inited gbt_curl */
+				pool->gbt_curl = curl_easy_init();
+				if (unlikely(!pool->gbt_curl))
+					quit(1, "GBT CURL initialisation failed");
+				pool->gbt_solo = true;
+				if (!opt_btcd)
+					opt_btcd = pool;
 			}
 		}
 		/* Reset this so we can probe fully just after this. It will be
@@ -6725,15 +7583,13 @@ static struct work *hash_pop(bool blocking)
 		if (!blocking)
 			goto out_unlock;
 		do {
-			struct timespec then;
-			struct timeval now;
+			struct timespec abstime, tdiff = {10, 0};
 			int rc;
 
-			cgtime(&now);
-			then.tv_sec = now.tv_sec + 10;
-			then.tv_nsec = now.tv_usec * 1000;
+			cgcond_time(&abstime);
+			timeraddspec(&abstime, &tdiff);
 			pthread_cond_signal(&gws_cond);
-			rc = pthread_cond_timedwait(&getq->cond, stgd_lock, &then);
+			rc = pthread_cond_timedwait(&getq->cond, stgd_lock, &abstime);
 			/* Check again for !no_work as multiple threads may be
 				* waiting on this condition and another may set the
 				* bool separately. */
@@ -6836,7 +7692,7 @@ void set_target(unsigned char *dest_target, double diff)
 	cg_memcpy(dest_target, target, 32);
 }
 
-#if defined (USE_AVALON2) || defined (USE_AVALON4) || defined (USE_AVALON_MINER) || defined (USE_HASHRATIO)
+#if defined (USE_AVALON2) || defined (USE_AVALON4) || defined (USE_AVALON7) || defined (USE_AVALON8) || defined (USE_AVALON_MINER) || defined (USE_HASHRATIO)
 bool submit_nonce2_nonce(struct thr_info *thr, struct pool *pool, struct pool *real_pool,
 			 uint32_t nonce2, uint32_t nonce,  uint32_t ntime)
 {
@@ -6851,11 +7707,11 @@ bool submit_nonce2_nonce(struct thr_info *thr, struct pool *pool, struct pool *r
 	cg_wunlock(&pool->data_lock);
 
 	gen_stratum_work(pool, work);
-	while (ntime--) {
-		roll_work(work);
-	}
+	roll_work_ntime(work, ntime);
 
 	work->pool = real_pool;
+	/* Inherit the sdiff from the original stratum */
+	work->sdiff = pool->sdiff;
 
 	work->thr_id = thr_id;
 	work->work_block = work_block;
@@ -6870,6 +7726,39 @@ bool submit_nonce2_nonce(struct thr_info *thr, struct pool *pool, struct pool *r
 	return ret;
 }
 #endif
+
+#ifdef USE_BITMAIN_SOC
+void get_work_by_nonce2(struct thr_info *thr,
+						struct work **work,
+						struct pool *pool,
+						struct pool *real_pool,
+						uint64_t nonce2,
+						uint32_t version)
+{
+	*work = make_work();
+	const int thr_id = thr->id;
+	struct cgpu_info *cgpu = thr->cgpu;
+	struct device_drv *drv = cgpu->drv;
+	cg_wlock(&pool->data_lock);
+	pool->nonce2 = nonce2;
+	//if(pool->support_vil) // comment as default
+	version = Swap32(version);
+	cg_memcpy(pool->header_bin, &version, 4);
+	cg_wunlock(&pool->data_lock);
+
+	gen_stratum_work(pool, *work);
+
+	(*work)->pool = real_pool;
+
+	(*work)->thr_id = thr_id;
+	(*work)->work_block = work_block;
+	(*work)->pool->works++;
+
+	(*work)->mined = true;
+	(*work)->version = version;
+}
+#endif
+
 
 /* Generates stratum based work based on the most recent notify information
  * from the pool. This will keep generating work while a pool is down so we use
@@ -6932,7 +7821,7 @@ static void gen_stratum_work(struct pool *pool, struct work *work)
 		free(merkle_hash);
 	}
 
-	calc_midstate(work);
+	calc_midstate(pool, work);
 	set_target(work->target, work->sdiff);
 
 	local_work++;
@@ -7074,7 +7963,7 @@ static void gen_solo_work(struct pool *pool, struct work *work)
 		free(merkle_hash);
 	}
 
-	calc_midstate(work);
+	calc_midstate(pool, work);
 
 	local_work++;
 	work->gbt = true;
@@ -7668,17 +8557,10 @@ struct work *clone_queued_work_bymidstate(struct cgpu_info *cgpu, char *midstate
  * given que hashtable. Code using this function must be able
  * to handle NULL as a return which implies there is no matching work.
  * The calling function must lock access to the que if it is required. */
-struct work *__find_work_byid(struct work *que, uint32_t id)
+struct work *__find_work_byid(struct work *queue, uint32_t id)
 {
-	struct work *work, *tmp, *ret = NULL;
-
-	HASH_ITER(hh, que, work, tmp) {
-		if (work->id == id) {
-			ret = work;
-			break;
-		}
-	}
-
+	struct work *ret = NULL;
+	HASH_FIND_INT(queue, &id, ret);
 	return ret;
 }
 
@@ -7799,8 +8681,6 @@ void hash_queued_work(struct thr_info *mythr)
 		struct timeval diff;
 		int64_t hashes;
 
-		mythr->work_update = false;
-
 		fill_queue(mythr, cgpu, drv, thr_id);
 
 		hashes = drv->scanwork(mythr);
@@ -7830,8 +8710,10 @@ void hash_queued_work(struct thr_info *mythr)
 		if (unlikely(mythr->pause || cgpu->deven != DEV_ENABLED))
 			mt_disable(mythr, thr_id, drv);
 
-		if (mythr->work_update)
+		if (mythr->work_update) {
 			drv->update_work(cgpu);
+			mythr->work_update = false;
+		}
 	}
 	cgpu->deven = DEV_DISABLED;
 }
@@ -7851,8 +8733,6 @@ void hash_driver_work(struct thr_info *mythr)
 	while (likely(!cgpu->shutdown)) {
 		struct timeval diff;
 		int64_t hashes;
-
-		mythr->work_update = false;
 
 		hashes = drv->scanwork(mythr);
 
@@ -7881,8 +8761,10 @@ void hash_driver_work(struct thr_info *mythr)
 		if (unlikely(mythr->pause || cgpu->deven != DEV_ENABLED))
 			mt_disable(mythr, thr_id, drv);
 
-		if (mythr->work_update)
+		if (mythr->work_update) {
 			drv->update_work(cgpu);
+			mythr->work_update = false;
+		}
 	}
 	cgpu->deven = DEV_DISABLED;
 }
@@ -8355,6 +9237,9 @@ static void *watchdog_thread(void __maybe_unused *userdata)
 	uint64_t notify_usec;
 	struct timeval notify_interval, notify_tv;
 
+	memset(&notify_interval, 0, sizeof(struct timeval));
+	memset(&notify_tv, 0, sizeof(struct timeval));
+
 	if (sd_watchdog_enabled(false, &notify_usec)) {
 		notify_usec = notify_usec / 2;
 		us_to_timeval(&notify_interval, notify_usec);
@@ -8480,7 +9365,7 @@ static void *watchdog_thread(void __maybe_unused *userdata)
 			snprintf(dev_str, sizeof(dev_str), "%s %d", cgpu->drv->name, cgpu->device_id);
 
 			/* Thread is waiting on getwork or disabled */
-			if (thr->getwork || *denable == DEV_DISABLED)
+			if (thr->getwork || *denable == DEV_DISABLED || thr->pause)
 				continue;
 
 			if (cgpu->status != LIFE_WELL && (now.tv_sec - thr->last.tv_sec < WATCHDOG_SICK_TIME)) {
@@ -8614,6 +9499,20 @@ void print_summary(void)
 
 static void clean_up(bool restarting)
 {
+#ifdef USE_BITMAIN_SOC
+	struct sysinfo sInfo;
+	if (sysinfo(&sInfo))
+	{
+		applog(LOG_INFO, "Failed to get sysinfo, errno:%u, reason:%s\n",
+			   errno, strerror(errno));
+		total_tv_end_sys=time(NULL);
+	}
+	else
+	{
+		total_tv_end_sys=sInfo.uptime;
+	}
+#endif
+
 #ifdef USE_USBUTILS
 	usb_polling = false;
 	pthread_join(usb_poll_thread, NULL);
@@ -9039,6 +9938,8 @@ void fill_device_drv(struct device_drv *drv)
 	 * we will assume they don't and set max to 1. */
 	if (!drv->max_diff)
 		drv->max_diff = 1;
+	if (!drv->genwork)
+		opt_gen_stratum_work = true;
 }
 
 void null_device_drv(struct device_drv *drv)
@@ -9234,6 +10135,23 @@ static void hotplug_process(void)
 
 #define DRIVER_DRV_DETECT_HOTPLUG(X) X##_drv.drv_detect(true);
 
+static void reinit_usb(void)
+{
+	int err;
+
+	usb_reinit = true;
+	/* Wait till libusb_poll_thread is no longer polling */
+	while (polling_usb)
+		cgsleep_ms(100);
+
+	applog(LOG_DEBUG, "Reinitialising libusb");
+	libusb_exit(NULL);
+	err = libusb_init(NULL);
+	if (err)
+		quit(1, "Reinit of libusb failed err %d:%s", err, libusb_error_name(err));
+	usb_reinit = false;
+}
+
 static void *hotplug_thread(void __maybe_unused *userdata)
 {
 	pthread_setcanceltype(PTHREAD_CANCEL_ASYNCHRONOUS, NULL);
@@ -9259,6 +10177,11 @@ static void *hotplug_thread(void __maybe_unused *userdata)
 
 			if (new_devices)
 				hotplug_process();
+
+			/* If we have no active devices, libusb may need to
+			 * be re-initialised to work properly */
+			if (total_devices == zombie_devs)
+				reinit_usb();
 
 			// hotplug_time >0 && <=9999
 			cgsleep_ms(hotplug_time * 1000);
@@ -9287,20 +10210,29 @@ static void probe_pools(void)
 #ifdef USE_USBUTILS
 static void *libusb_poll_thread(void __maybe_unused *arg)
 {
-	struct timeval tv_end = {0, 100000};
+	struct timeval tv_end;
 
 	RenameThread("USBPoll");
 
-	while (likely(usb_polling))
+	while (likely(usb_polling)) {
+		tv_end.tv_sec = 0;
+		tv_end.tv_usec = 100000;
+		while (usb_reinit) {
+			polling_usb = false;
+			cgsleep_ms(100);
+		}
+		polling_usb = true;
 		libusb_handle_events_timeout_completed(NULL, &tv_end, NULL);
+	}
 
 	/* Cancel any cancellable usb transfers */
 	cancel_usb_transfers();
 
 	/* Keep event handling going until there are no async transfers in
 	 * flight. */
-	tv_end.tv_sec = 0;
 	while (async_usb_transfers()) {
+		tv_end.tv_sec = 0;
+		tv_end.tv_usec = 0;
 		libusb_handle_events_timeout_completed(NULL, &tv_end, NULL);
 	};
 
@@ -9321,6 +10253,31 @@ static void initialise_usb(void) {
 }
 #else
 #define initialise_usb() {}
+#endif
+
+#ifdef USE_BITMAIN_SOC
+void setStartTimePoint()
+{
+	char logstr[256];
+	struct sysinfo sInfo;
+	if (sysinfo(&sInfo))
+	{
+		sprintf(logstr, "Failed to get sysinfo, errno:%u, reason:%s\n",
+				errno, strerror(errno));
+		writeInitLogFile(logstr);
+
+		total_tv_start_sys=time(NULL);
+		total_tv_end_sys=total_tv_start_sys+1;
+	}
+	else
+	{
+		total_tv_start_sys=sInfo.uptime;
+		total_tv_end_sys=total_tv_start_sys+1;
+
+		sprintf(logstr, "setStartTimePoint total_tv_start_sys=%d total_tv_end_sys=%d\n",total_tv_start_sys, total_tv_end_sys);
+		writeInitLogFile(logstr);
+	}
+}
 #endif
 
 int main(int argc, char *argv[])
@@ -9466,8 +10423,67 @@ int main(int argc, char *argv[])
 		set_target(bench_target, 32);
 	}
 
+#ifdef USE_BITMAIN_SOC
+	if(opt_version_path)
+	{
+		FILE * fpversion = fopen(opt_version_path, "rb");
+		char tmp[256] = {0};
+		int len = 0;
+		char * start = 0;
+
+		if(fpversion == NULL)
+		{
+			applog(LOG_ERR, "Open miner version file %s error", opt_version_path);
+		}
+		else
+		{
+			len = fread(tmp, 1, 256, fpversion);
+
+			if(len <= 0)
+			{
+				applog(LOG_ERR, "Read miner version file %s error %d", opt_version_path, len);
+			}
+			else
+			{
+				start = strstr(tmp, "\n");
+
+				if(start == NULL)
+				{
+					strcpy(g_miner_compiletime, tmp);
+				}
+				else
+				{
+					cg_memcpy(g_miner_compiletime, tmp, start-tmp);
+					strcpy(g_miner_type, start+1);
+				}
+
+				if(g_miner_compiletime[strlen(g_miner_compiletime)-1] == '\n')
+				{
+					g_miner_compiletime[strlen(g_miner_compiletime)-1] = 0;
+				}
+
+				if(g_miner_compiletime[strlen(g_miner_compiletime)-1] == '\r')
+				{
+					g_miner_compiletime[strlen(g_miner_compiletime)-1] = 0;
+				}
+
+				if(g_miner_type[strlen(g_miner_type)-1] == '\n')
+				{
+					g_miner_type[strlen(g_miner_type)-1] = 0;
+				}
+
+				if(g_miner_type[strlen(g_miner_type)-1] == '\r')
+				{
+					g_miner_type[strlen(g_miner_type)-1] = 0;
+				}
+			}
+		}
+		applog(LOG_ERR, "Miner compile time: %s type: %s", g_miner_compiletime, g_miner_type);
+	}
+#endif
+
 #ifdef HAVE_CURSES
-	if (opt_realquiet || opt_display_devs)
+	if (opt_realquiet || opt_display_devs || opt_decode)
 		use_curses = false;
 
 	if (use_curses)
@@ -9526,50 +10542,6 @@ int main(int argc, char *argv[])
 	/* Use the DRIVER_PARSE_COMMANDS macro to fill all the device_drvs */
 	DRIVER_PARSE_COMMANDS(DRIVER_FILL_DEVICE_DRV)
 
-	/* Use the DRIVER_PARSE_COMMANDS macro to detect all devices */
-	DRIVER_PARSE_COMMANDS(DRIVER_DRV_DETECT_ALL)
-
-	if (opt_display_devs) {
-		applog(LOG_ERR, "Devices detected:");
-		for (i = 0; i < total_devices; ++i) {
-			struct cgpu_info *cgpu = devices[i];
-			if (cgpu->name)
-				applog(LOG_ERR, " %2d. %s %d: %s (driver: %s)", i, cgpu->drv->name, cgpu->device_id, cgpu->name, cgpu->drv->dname);
-			else
-				applog(LOG_ERR, " %2d. %s %d (driver: %s)", i, cgpu->drv->name, cgpu->device_id, cgpu->drv->dname);
-		}
-		early_quit(0, "%d devices listed", total_devices);
-	}
-
-	mining_threads = 0;
-	for (i = 0; i < total_devices; ++i)
-		enable_device(devices[i]);
-
-#ifdef USE_USBUTILS
-	if (!total_devices) {
-		applog(LOG_WARNING, "No devices detected!");
-		applog(LOG_WARNING, "Waiting for USB hotplug devices or press q to quit");
-	}
-#else
-	if (!total_devices)
-		early_quit(1, "All devices disabled, cannot mine!");
-#endif
-
-	most_devices = total_devices;
-
-	load_temp_cutoffs();
-
-	for (i = 0; i < total_devices; ++i)
-		devices[i]->cgminer_stats.getwork_wait_min.tv_sec = MIN_SEC_UNSET;
-
-	if (!opt_compact) {
-		logstart += most_devices;
-		logcursor = logstart + 1;
-#ifdef HAVE_CURSES
-		check_winsizes();
-#endif
-	}
-
 	if (!total_pools) {
 		applog(LOG_WARNING, "Need to specify at least one pool server.");
 #ifdef HAVE_CURSES
@@ -9607,41 +10579,6 @@ int main(int argc, char *argv[])
 		if (opt_stderr_cmd)
 			fork_monitor();
 	#endif // defined(unix)
-
-	mining_thr = cgcalloc(mining_threads, sizeof(thr));
-	for (i = 0; i < mining_threads; i++)
-		mining_thr[i] = cgcalloc(1, sizeof(*thr));
-
-	// Start threads
-	k = 0;
-	for (i = 0; i < total_devices; ++i) {
-		struct cgpu_info *cgpu = devices[i];
-		cgpu->thr = cgmalloc(sizeof(*cgpu->thr) * (cgpu->threads+1));
-		cgpu->thr[cgpu->threads] = NULL;
-		cgpu->status = LIFE_INIT;
-
-		for (j = 0; j < cgpu->threads; ++j, ++k) {
-			thr = get_thread(k);
-			thr->id = k;
-			thr->cgpu = cgpu;
-			thr->device_thread = j;
-
-			if (!cgpu->drv->thread_prepare(thr))
-				continue;
-
-			if (unlikely(thr_info_create(thr, NULL, miner_thread, thr)))
-				early_quit(1, "thread %d create failed", thr->id);
-
-			cgpu->thr[j] = thr;
-
-			/* Enable threads for devices set not to mine but disable
-			 * their queue in case we wish to enable them later */
-			if (cgpu->deven != DEV_DISABLED) {
-				applog(LOG_DEBUG, "Pushing sem post to thread %d", thr->id);
-				cgsem_post(&thr->sem);
-			}
-		}
-	}
 
 	if (opt_benchmark || opt_benchfile)
 		goto begin_bench;
@@ -9689,6 +10626,88 @@ int main(int argc, char *argv[])
 	};
 
 begin_bench:
+	/* Use the DRIVER_PARSE_COMMANDS macro to detect all devices */
+	DRIVER_PARSE_COMMANDS(DRIVER_DRV_DETECT_ALL)
+
+	if (opt_display_devs) {
+		applog(LOG_ERR, "Devices detected:");
+		for (i = 0; i < total_devices; ++i) {
+			struct cgpu_info *cgpu = devices[i];
+			if (cgpu->name)
+				applog(LOG_ERR, " %2d. %s %d: %s (driver: %s)", i, cgpu->drv->name, cgpu->device_id, cgpu->name, cgpu->drv->dname);
+			else
+				applog(LOG_ERR, " %2d. %s %d (driver: %s)", i, cgpu->drv->name, cgpu->device_id, cgpu->drv->dname);
+		}
+		early_quit(0, "%d devices listed", total_devices);
+	}
+
+	mining_threads = 0;
+	for (i = 0; i < total_devices; ++i)
+		enable_device(devices[i]);
+
+	mining_thr = cgcalloc(mining_threads, sizeof(thr));
+	for (i = 0; i < mining_threads; i++)
+		mining_thr[i] = cgcalloc(1, sizeof(*thr));
+
+
+	if (!opt_decode) {
+#ifdef USE_USBUTILS
+		if (!total_devices) {
+			applog(LOG_WARNING, "No devices detected!");
+			applog(LOG_WARNING, "Waiting for USB hotplug devices or press q to quit");
+		}
+#else
+		if (!total_devices)
+			early_quit(1, "All devices disabled, cannot mine!");
+#endif
+	}
+
+	most_devices = total_devices;
+
+	load_temp_cutoffs();
+
+	for (i = 0; i < total_devices; ++i)
+		devices[i]->cgminer_stats.getwork_wait_min.tv_sec = MIN_SEC_UNSET;
+
+	if (!opt_compact) {
+		logstart += most_devices;
+		logcursor = logstart + 1;
+#ifdef HAVE_CURSES
+		check_winsizes();
+#endif
+	}
+
+	// Start threads
+	k = 0;
+	for (i = 0; i < total_devices; ++i) {
+		struct cgpu_info *cgpu = devices[i];
+		cgpu->thr = cgmalloc(sizeof(*cgpu->thr) * (cgpu->threads+1));
+		cgpu->thr[cgpu->threads] = NULL;
+		cgpu->status = LIFE_INIT;
+
+		for (j = 0; j < cgpu->threads; ++j, ++k) {
+			thr = get_thread(k);
+			thr->id = k;
+			thr->cgpu = cgpu;
+			thr->device_thread = j;
+
+			if (!cgpu->drv->thread_prepare(thr))
+				continue;
+
+			if (unlikely(thr_info_create(thr, NULL, miner_thread, thr)))
+				early_quit(1, "thread %d create failed", thr->id);
+
+			cgpu->thr[j] = thr;
+
+			/* Enable threads for devices set not to mine but disable
+			 * their queue in case we wish to enable them later */
+			if (cgpu->deven != DEV_DISABLED) {
+				applog(LOG_DEBUG, "Pushing sem post to thread %d", thr->id);
+				cgsem_post(&thr->sem);
+			}
+		}
+	}
+
 	total_mhashes_done = 0;
 	for (i = 0; i < total_devices; i++) {
 		struct cgpu_info *cgpu = devices[i];
@@ -9696,6 +10715,21 @@ begin_bench:
 		cgpu->rolling = cgpu->total_mhashes = 0;
 	}
 
+#ifdef USE_BITMAIN_SOC
+	struct sysinfo sInfo;
+	if (sysinfo(&sInfo))
+	{
+		applog(LOG_INFO, "Failed to get sysinfo, errno:%u, reason:%s\n",
+			   errno, strerror(errno));
+		total_tv_end_sys=time(NULL);
+		total_tv_start_sys=time(NULL);
+	}
+	else
+	{
+		total_tv_end_sys=sInfo.uptime;
+		total_tv_start_sys=sInfo.uptime;
+	}
+#endif
 	cgtime(&total_tv_start);
 	cgtime(&total_tv_end);
 	cgtime(&tv_hashmeter);
@@ -9795,9 +10829,11 @@ begin_bench:
 				cgsleep_ms(5);
 		};
 		if (pool->has_stratum) {
-			gen_stratum_work(pool, work);
-			applog(LOG_DEBUG, "Generated stratum work");
-			stage_work(work);
+			if (opt_gen_stratum_work) {
+				gen_stratum_work(pool, work);
+				applog(LOG_DEBUG, "Generated stratum work");
+				stage_work(work);
+			}
 			continue;
 		}
 
