@@ -18,6 +18,7 @@ Currently supported devices include:
 - Bi*fury USB
 - Cointerra
 - Compac bitshopperde and GekkoScience
+- Gekko Science
 - Halong Dragonmint T1
 - Hashfast Babyjet and Sierra
 - Hashratio
@@ -916,11 +917,3 @@ Rockminer R-Box Devices
 
 Note that only a limited range is likely to be accepted (usually 200-290)
 
----
-
-This code is provided entirely free of charge by the programmer in his spare
-time so donations would be greatly appreciated. Please consider donating to the
-address below.
-
-Con Kolivas <kernel@kolivas.org>
-15qSxP1SQcUX3o4nhkfdbgyoWEFMomJ4rZ

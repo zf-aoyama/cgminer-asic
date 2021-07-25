@@ -171,7 +171,7 @@ Extract the share\git-core folder and place it into \MinGW\share.
 After the previous step you should have a folder called \MinGW\share\git-core.
 To test if it is working, open a MinGW shell and type the following:
   git config -–global core.autocrlf false (note: one time run only)
-  git clone git://github.com/ckolivas/cgminer.git
+  git clone git://github.com/kanoi/cgminer.git
 
 If you simply just want to update the source after you have already cloned, type:
   git pull
