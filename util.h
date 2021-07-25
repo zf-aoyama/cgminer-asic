@@ -122,6 +122,7 @@ unsigned char *ser_string(char *s, int *slen);
 int thr_info_create(struct thr_info *thr, pthread_attr_t *attr, void *(*start) (void *), void *arg);
 void thr_info_cancel(struct thr_info *thr);
 void cgcond_time(struct timespec *abstime);
+void cgtime_real(struct timeval *tv);
 void cgtime(struct timeval *tv);
 void subtime(struct timeval *a, struct timeval *b);
 void addtime(struct timeval *a, struct timeval *b);
@@ -140,7 +141,7 @@ void cgsleep_ms(int ms);
 void cgsleep_us(int64_t us);
 void cgtimer_time(cgtimer_t *ts_start);
 #define cgsleep_prepare_r(ts_start) cgtimer_time(ts_start)
-#ifdef USE_BITMAIN_SOC
+#if defined(WIN32) || defined(__APPLE__) || defined(USE_BITMAIN_SOC)
 void cgsleep_ms_r(cgtimer_t *ts_start, int ms);
 void cgsleep_us_r(cgtimer_t *ts_start, int64_t us);
 #else

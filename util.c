@@ -1413,6 +1413,15 @@ void cgcond_time(struct timespec *abstime)
 	clock_gettime(CLOCK_REALTIME, abstime);
 }
 
+/* Get CLOCK_REALTIME for display purposes */
+void cgtime_real(struct timeval *tv)
+{
+	struct timespec tp;
+	clock_gettime(CLOCK_REALTIME, &tp);
+	tv->tv_sec = tp.tv_sec;
+	tv->tv_usec = tp.tv_nsec / 1000;
+}
+
 #ifdef WIN32
 /* Mingw32 has no strsep so create our own custom one  */
 
@@ -3071,7 +3080,7 @@ static bool setup_stratum_socket(struct pool *pool)
 		 * we can connect to quickly. */
 		noblock_socket(sockd);
 		if (connect(sockd, p->ai_addr, p->ai_addrlen) == -1) {
-			struct timeval tv_timeout = {1, 0};
+			struct timeval tv_timeout = {2, 0};
 			int selret;
 			fd_set rw;
 
@@ -3215,8 +3224,26 @@ resend:
 	}
 
 	/* Attempt to configure stratum protocol feature set first. */
+#ifdef USE_GEKKO
+	configure_stratum_mining(pool);
+	if (!pool->sock) {
+		//repair damage done by configure_stratum_mining
+		if (!setup_stratum_socket(pool)) {
+			sockd = false;
+			goto out;
+		}
+
+		sockd = true;
+
+		if (recvd) {
+			/* Get rid of any crap lying around if we're resending */
+			clear_sock(pool);
+		}
+	}
+#else
 	if (!configure_stratum_mining(pool))
 		goto out;
+#endif
 
 	if (recvd) {
 		sprintf(s, "{\"id\": %d, \"method\": \"mining.subscribe\", \"params\": []}", swork_id++);
