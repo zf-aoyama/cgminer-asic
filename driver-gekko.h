@@ -42,7 +42,8 @@ enum miner_state {
 
 enum miner_asic {
 	BM1384 = 1,
-	BM1387
+	BM1387,
+	BM1397
 };
 
 enum plateau_type {
@@ -207,7 +208,7 @@ struct COMPAC_INFO {
 	struct timeval last_wu_increase;        // Last wu_max change
 	struct timeval last_pool_lost;          // Last time we lost pool
 
-	struct ASIC_INFO asics[64];
+	struct ASIC_INFO asics[255];
 	bool active_work[JOB_MAX];              // Tag good and stale work
 	struct work *work[JOB_MAX];             // Work ring buffer
 

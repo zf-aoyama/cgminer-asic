@@ -588,11 +588,11 @@ static void init_task(struct COMPAC_INFO *info)
 			stuff_reverse(info->task + 8, work->data + 64, 12);
 			stuff_reverse(info->task + 20, work->midstate, 32);
 			if (!opt_gekko_noboost && info->vmask) {
-				if (info->midstates > 1);
+				if (info->midstates > 1)
 					stuff_reverse(info->task + 20 + 32, work->midstate1, 32);
-				if (info->midstates > 2);
+				if (info->midstates > 2)
 					stuff_reverse(info->task + 20 + 32 + 32, work->midstate2, 32);
-				if (info->midstates > 3);
+				if (info->midstates > 3)
 					stuff_reverse(info->task + 20 + 32 + 32 + 32, work->midstate3, 32);
 			}
 		} else {
@@ -633,6 +633,8 @@ static void *compac_mine(void *object)
 	uint64_t hashes = 0;
 	double rolling_minute[SAMPLE_SIZE] = {0};
 	char str_frequency[1024];
+
+	float g_new_frequency = 0.0;
 
 	bool adjustable = 0;
 
@@ -893,7 +895,6 @@ static void *compac_mine(void *object)
 				} else {
 					struct ASIC_INFO *asic = &info->asics[info->frequency_fo];
 					if (ping_itr == 0 && asic->frequency != info->frequency_requested) {
-						float new_frequency;
 
 						// catching up after reset
 						if (asic->frequency < info->frequency_computed) {
@@ -925,39 +926,39 @@ static void *compac_mine(void *object)
 						}
 
 						if (asic->frequency < info->frequency_requested) {
-							if (new_frequency < info->frequency_asic) {
-								new_frequency = info->frequency_asic;
+							if (g_new_frequency < info->frequency_asic) {
+								g_new_frequency = info->frequency_asic;
 							} else {
-								new_frequency = asic->frequency + opt_gekko_step_freq;
+								g_new_frequency = asic->frequency + opt_gekko_step_freq;
 							}
-							if (new_frequency > info->frequency_requested) {
-								new_frequency = info->frequency_requested;
+							if (g_new_frequency > info->frequency_requested) {
+								g_new_frequency = info->frequency_requested;
 							}
-							//if (new_frequency < info->frequency_start) {
-								//new_frequency = info->frequency_start;
-								//new_frequency = asic->frequency + opt_gekko_step_freq;
+							//if (g_new_frequency < info->frequency_start) {
+								//g_new_frequency = info->frequency_start;
+								//g_new_frequency = asic->frequency + opt_gekko_step_freq;
 							//}
 							// limit to one adjust per 5 seconds if last set failed.
-							if (new_frequency == asic->frequency_set && ms_tdiff(&now, &asic->last_frequency_adjust) < MS_SECOND_5) {
+							if (g_new_frequency == asic->frequency_set && ms_tdiff(&now, &asic->last_frequency_adjust) < MS_SECOND_5) {
 								adjustable = 0;
 							}
 							if (!adjustable) {
-								new_frequency = asic->frequency;
+								g_new_frequency = asic->frequency;
 							}
 						} else {
-							new_frequency = info->frequency_requested;
+							g_new_frequency = info->frequency_requested;
 						}
-						if (asic->frequency != new_frequency) {
+						if (asic->frequency != g_new_frequency) {
 							cgtime(&info->last_frequency_adjust);
 							cgtime(&asic->last_frequency_adjust);
 							cgtime(&info->monitor_time);
 							asic->frequency_updated = 1;
 							frequency_updated = 1;
 							if (info->asic_type == BM1387) {
-								compac_set_frequency_single(compac, new_frequency, info->frequency_fo);
+								compac_set_frequency_single(compac, g_new_frequency, info->frequency_fo);
 							} else if (info->asic_type == BM1384) {
 								if (info->frequency_fo == 0) {
-									compac_set_frequency(compac, new_frequency);
+									compac_set_frequency(compac, g_new_frequency);
 									compac_send_chain_inactive(compac);
 								}
 							}
@@ -1073,7 +1074,7 @@ static void *compac_handle_rx(void *object, int read_bytes, int path)
 	}
 
 	if (cmd_resp && info->rx[0] == 0x80 && info->frequency_of != (int)(info->chips)) {
-		float frequency;
+		float frequency = 0.0;
 		int frequency_of = info->frequency_of;
 		info->frequency_of = info->chips;
 		cgtime(&info->last_frequency_report);
@@ -1142,7 +1143,7 @@ static void *compac_handle_rx(void *object, int read_bytes, int path)
 			break;
 		case MINER_OPEN_CORE:
 			if ((info->rx[0] == 0x72 && info->rx[1] == 0x03 && info->rx[2] == 0xEA && info->rx[3] == 0x83) ||
-				(info->rx[0] == 0xE1 && info->rx[0] == 0x6B && info->rx[0] == 0xF8 && info->rx[0] == 0x09)) {
+				(info->rx[0] == 0xE1 && info->rx[1] == 0x6B && info->rx[2] == 0xF8 && info->rx[3] == 0x09)) {
 				//open core nonces = healthy chips.
 				info->zero_check++;
 			}
