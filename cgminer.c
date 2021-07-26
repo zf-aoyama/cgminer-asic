@@ -1,6 +1,6 @@
 /*
+ * Copyright 2011-2021 Andrew Smith
  * Copyright 2011-2018 Con Kolivas
- * Copyright 2011-2015 Andrew Smith
  * Copyright 2011-2012 Luke Dashjr
  * Copyright 2010 Jeff Garzik
  *
@@ -11,6 +11,12 @@
  */
 
 #include "config.h"
+
+#ifdef __GNUC__
+#if __GNUC__ >= 7
+#pragma GCC diagnostic ignored "-Wcast-function-type"
+#endif
+#endif
 
 #ifdef HAVE_CURSES
 #include <curses.h>

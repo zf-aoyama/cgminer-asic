@@ -1,5 +1,5 @@
 /*
- * Copyright 2011-2015 Andrew Smith
+ * Copyright 2011-2021 Andrew Smith
  * Copyright 2011-2015,2018 Con Kolivas
  *
  * This program is free software; you can redistribute it and/or modify it
@@ -5141,7 +5141,7 @@ void api(int api_thr_id)
 
 						for (i = 0; cmds[i].name != NULL; i++) {
 							if (strcmp(cmdptr, cmds[i].name) == 0) {
-								sprintf(cmdbuf, "|%s|", cmdptr);
+								snprintf(cmdbuf, sizeof(cmdbuf), "|%s|", cmdptr);
 								if (isjoin) {
 									if (strstr(cmdsbuf, cmdbuf)) {
 										did = true;
