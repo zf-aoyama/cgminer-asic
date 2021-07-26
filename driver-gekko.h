@@ -1,3 +1,13 @@
+/*
+ * Copyright 2017-2021 vh
+ * Copyright 2021 kano
+ *
+ * This program is free software; you can redistribute it and/or modify it
+ * under the terms of the GNU General Public License as published by the Free
+ * Software Foundation; either version 3 of the License, or (at your option)
+ * any later version.  See COPYING for more details.
+ */
+
 #include "math.h"
 #include "miner.h"
 #include "usbutils.h"
@@ -166,7 +176,7 @@ struct COMPAC_INFO {
 	uint64_t hashes;             // Hashes completed
 	uint64_t xhashes;            // Hashes completed / 0xffffffffull
 	uint32_t job_id;             // JobId incrementer
-	uint32_t log_wide;           // Extra output in widescreen mode
+	int32_t log_wide;            // Extra output in widescreen mode
 	uint32_t low_hash;           // Tracks of low hashrate
 	uint32_t max_job_id;         // JobId cap
 	uint64_t max_task_wait;      // Micro seconds to wait before next task is sent
