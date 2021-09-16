@@ -15,6 +15,7 @@
 #ifdef __GNUC__
 #if __GNUC__ >= 7
 #pragma GCC diagnostic ignored "-Wcast-function-type"
+#pragma GCC diagnostic ignored "-Wstringop-truncation"
 #endif
 #endif
 
@@ -309,6 +310,7 @@ bool opt_gekko_gsd_detect = 0;
 bool opt_gekko_gse_detect = 0;
 bool opt_gekko_gsh_detect = 0;
 bool opt_gekko_gsi_detect = 0;
+bool opt_gekko_gsf_detect = 0;
 float opt_gekko_gsc_freq = 150;
 float opt_gekko_gsd_freq = 100;
 float opt_gekko_gse_freq = 150;
@@ -318,6 +320,7 @@ float opt_gekko_wait_factor = 0.5;
 float opt_gekko_step_freq = 6.25;
 int opt_gekko_gsh_freq = 100;
 int opt_gekko_gsi_freq = 550;
+int opt_gekko_gsf_freq = 200;
 int opt_gekko_bauddiv = 0;
 int opt_gekko_gsh_vcore = 400;
 int opt_gekko_start_freq = 100;
@@ -1932,12 +1935,15 @@ static struct opt_table opt_config_table[] = {
 	OPT_WITHOUT_ARG("--gekko-r606-detect",
 			 opt_set_bool, &opt_gekko_gsi_detect,
 			 "Detect GekkoScience Terminus BM1387"),
+	OPT_WITHOUT_ARG("--gekko-compacf-detect",
+			 opt_set_bool, &opt_gekko_gsf_detect,
+			 "Detect GekkoScience CompacF BM1397"),
 	OPT_WITHOUT_ARG("--gekko-noboost",
 			 opt_set_bool, &opt_gekko_noboost,
-			 "Disable GekkoScience NewPac/R606 AsicBoost"),
+			 "Disable GekkoScience NewPac/R606/CompacF AsicBoost"),
 	OPT_WITHOUT_ARG("--gekko-lowboost",
 			 opt_set_bool, &opt_gekko_lowboost,
-			 "GekkoScience NewPac/R606 AsicBoost - 2 midstate"),
+			 "GekkoScience NewPac/R606/CompacF AsicBoost - 2 midstate"),
 	OPT_WITH_ARG("--gekko-terminus-freq",
 		     set_float_0_to_500, opt_show_floatval, &opt_gekko_gse_freq,
 		     "Set GekkoScience Terminus BM1384 frequency in MHz, range 6.25-500"),
@@ -1965,6 +1971,9 @@ static struct opt_table opt_config_table[] = {
 	OPT_WITH_ARG("--gekko-r606-freq",
 		     set_int_0_to_9999, opt_show_intval, &opt_gekko_gsi_freq,
 		     "Set GekkoScience Terminus R606 frequency in MHz, range 50-900"),
+	OPT_WITH_ARG("--gekko-compacf-freq",
+		     set_int_0_to_9999, opt_show_intval, &opt_gekko_gsf_freq,
+		     "Set GekkoScience CompacF BM1397 frequency in MHz, range 100-800"),
 	OPT_WITH_ARG("--gekko-start-freq",
 		     set_int_0_to_9999, opt_show_intval, &opt_gekko_start_freq,
                      "Ramp start frequency MHz 25-500"),
@@ -6080,7 +6089,7 @@ void zero_stats(void)
 	}
 }
 
-static void set_highprio(void)
+static void __maybe_unused set_highprio(void)
 {
 #ifndef WIN32
 	int ret = nice(-10);
@@ -8194,17 +8203,22 @@ static void submit_work_async(struct work *work)
 	}
 }
 
-void inc_hw_errors(struct thr_info *thr)
+void inc_hw_errors_n(struct thr_info *thr, int n)
 {
 	applog(LOG_INFO, "%s %d: invalid nonce - HW error", thr->cgpu->drv->name,
 	       thr->cgpu->device_id);
 
 	mutex_lock(&stats_lock);
-	hw_errors++;
-	thr->cgpu->hw_errors++;
+	hw_errors += n;
+	thr->cgpu->hw_errors += n;
 	mutex_unlock(&stats_lock);
 
 	thr->cgpu->drv->hw_error(thr);
+}
+
+void inc_hw_errors(struct thr_info *thr)
+{
+	inc_hw_errors_n(thr, 1);
 }
 
 /* Fills in the work nonce and builds the output data in work->hash */
@@ -8238,6 +8252,23 @@ bool test_nonce_diff(struct work *work, uint32_t nonce, double diff)
 	return (le64toh(*hash64) <= diff64);
 }
 
+/* testing a nonce and return the diff - 0 means invalid */
+double test_nonce_value(struct work *work, uint32_t nonce)
+{
+	uint32_t *hash_32 = (uint32_t *)(work->hash + 28);
+	double d64, s64, ds;
+
+	rebuild_nonce(work, nonce);
+	if (*hash_32 != 0)
+		return 0.0;
+
+	d64 = truediffone;
+	s64 = le256todouble(work->hash);
+	ds = d64 / s64;
+
+	return ds;
+}
+
 static void update_work_stats(struct thr_info *thr, struct work *work)
 {
 	double test_diff = current_diff;
@@ -8266,6 +8297,11 @@ bool submit_tested_work(struct thr_info *thr, struct work *work)
 {
 	struct work *work_out;
 	update_work_stats(thr, work);
+
+	// dev testing logging the difficulty of all nonces
+	//double diff = truediffone / le256todouble(work->hash);
+	//applog(LOG_ERR, "%s() %s %d: diff=%.1f", __func__,
+	//	thr->cgpu->drv->name, thr->cgpu->device_id, diff);
 
 	if (!fulltest(work->hash, work->target)) {
 		applog(LOG_INFO, "%s %d: Share above target", thr->cgpu->drv->name,

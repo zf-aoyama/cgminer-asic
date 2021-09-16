@@ -339,9 +339,27 @@ Options for both config file and command line:
 --expiry|-E <arg>   Upper bound on how many seconds after getting work we consider a share from it stale (default: 120)
 --failover-only     Don't leak work to backup pools when primary pool is lagging
 --fix-protocol      Do not redirect to stratum protocol from GBT
+--gekko-2pac-detect Detect GekkoScience 2Pac BM1384
 --gekko-2pac-freq <arg> Set GekkoScience 2Pac BM1384 frequency in MHz, range 6.25-500 (default 100.0)
+--gekko-bauddiv     Set GekkoScience BM1387 baud divider {0: auto, 1: 1.5M, 7: 375K, 13: 214K, 25: 115K}
+--gekko-compac-detect Detect GekkoScience Compac BM1384
 --gekko-compac-freq <arg> Set GekkoScience Compac BM1384 frequency in MHz, range 6.25-500 (default 150.0)
+--gekko-compacf-detect Detect GekkoScience CompacF BM1397
+--gekko-compacf-freq <arg> Set GekkoScience CompacF BM1397 frequency in MHz, range 100-800 (default 200.0)
+--gekko-lowboost    GekkoScience NewPac/R606/CompacF AsicBoost - 2 midstate
+--gekko-newpac-detect Detect GekkoScience NewPac BM1387
+--gekko-newpac-freq Set GekkoScience NewPac BM1387 frequency in MHz, range 50-900
+--gekko-noboost     Disable GekkoScience NewPac/R606/CompacF AsicBoost
+--gekko-r606-detect Detect GekkoScience Terminus BM1387
+--gekko-r606-freq   Set GekkoScience Terminus R606 frequency in MHz, range 50-900
+--gekko-serial      Detect GekkoScience Device by Serial Number
+--gekko-start-freq  Ramp start frequency MHz 25-500
+--gekko-step-delay  Ramp step interval range 1-600
+--gekko-terminus-detect Detect GekkoScience Terminus BM1384
 --gekko-terminus-freq <arg> Set GekkoScience Terminus BM1384 frequency in MHz, range 6.25-500 (default 150.0)
+--gekko-tune-down   Set GekkoScience miner minimum hash quality, range 0-100
+--gekko-tune-up     Set GekkoScience miner ramping hash threshold, rante 0-99
+--gekko-wait-factor Set GekkoScience miner task send wait factor, range 0.01-1.00
 --hfa-hash-clock <arg> Set hashfast clock speed (default: 550)
 --hfa-fail-drop <arg> Set how many MHz to drop clockspeed each failure on an overlocked hashfast device (default: 10)
 --hfa-fan <arg>     Set fanspeed percentage for hashfast, single value or range (default: 10-85)

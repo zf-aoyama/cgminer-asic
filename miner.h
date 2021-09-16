@@ -1063,6 +1063,7 @@ extern bool opt_gekko_gsd_detect;
 extern bool opt_gekko_gse_detect;
 extern bool opt_gekko_gsh_detect;
 extern bool opt_gekko_gsi_detect;
+extern bool opt_gekko_gsf_detect;
 extern float opt_gekko_gsc_freq;
 extern float opt_gekko_gsd_freq;
 extern float opt_gekko_gse_freq;
@@ -1073,6 +1074,7 @@ extern float opt_gekko_step_freq;
 extern int opt_gekko_bauddiv;
 extern int opt_gekko_gsh_freq;
 extern int opt_gekko_gsi_freq;
+extern int opt_gekko_gsf_freq;
 extern int opt_gekko_gsh_vcore;
 extern int opt_gekko_start_freq;
 extern int opt_gekko_step_delay;
@@ -1580,9 +1582,11 @@ struct modminer_fpga_state {
 } while (0)
 
 extern void get_datestamp(char *, size_t, struct timeval *);
+extern void inc_hw_errors_n(struct thr_info *thr, int n);
 extern void inc_hw_errors(struct thr_info *thr);
 extern bool test_nonce(struct work *work, uint32_t nonce);
 extern bool test_nonce_diff(struct work *work, uint32_t nonce, double diff);
+extern double test_nonce_value(struct work *work, uint32_t nonce);
 extern bool submit_tested_work(struct thr_info *thr, struct work *work);
 extern bool submit_nonce(struct thr_info *thr, struct work *work, uint32_t nonce);
 extern bool submit_noffset_nonce(struct thr_info *thr, struct work *work, uint32_t nonce,
@@ -1662,6 +1666,7 @@ enum api_data_type {
 	API_UINT64,
 	API_INT64,
 	API_DOUBLE,
+	API_FLOAT,
 	API_ELAPSED,
 	API_BOOL,
 	API_TIMEVAL,
@@ -1698,7 +1703,9 @@ extern struct api_data *api_add_uint(struct api_data *root, char *name, unsigned
 extern struct api_data *api_add_uint32(struct api_data *root, char *name, uint32_t *data, bool copy_data);
 extern struct api_data *api_add_hex32(struct api_data *root, char *name, uint32_t *data, bool copy_data);
 extern struct api_data *api_add_uint64(struct api_data *root, char *name, uint64_t *data, bool copy_data);
+extern struct api_data *api_add_int64(struct api_data *root, char *name, int64_t *data, bool copy_data);
 extern struct api_data *api_add_double(struct api_data *root, char *name, double *data, bool copy_data);
+extern struct api_data *api_add_float(struct api_data *root, char *name, float *data, bool copy_data);
 extern struct api_data *api_add_elapsed(struct api_data *root, char *name, double *data, bool copy_data);
 extern struct api_data *api_add_bool(struct api_data *root, char *name, bool *data, bool copy_data);
 extern struct api_data *api_add_timeval(struct api_data *root, char *name, struct timeval *data, bool copy_data);

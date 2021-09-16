@@ -11,20 +11,23 @@
 #include "math.h"
 #include "miner.h"
 #include "usbutils.h"
+#include "klist.h"
 
 #define JOB_MAX      0x7F
 #define BUFFER_MAX   0xFF
 #define SAMPLE_SIZE  0x78
 #define MS_SECOND_1  1000
-#define MS_SECOND_5  1000 * 5
-#define MS_SECOND_15 1000 * 15
-#define MS_SECOND_30 1000 * 30
-#define MS_MINUTE_1  1000 * 60
-#define MS_MINUTE_2  1000 * 60 * 2
-#define MS_MINUTE_5  1000 * 60 * 5
-#define MS_MINUTE_10 1000 * 60 * 10
-#define MS_MINUTE_30 1000 * 60 * 30
-#define MS_HOUR_1    1000 * 60 * 60
+
+#define MS_SECOND_5  (MS_SECOND_1 * 5)
+#define MS_SECOND_15 (MS_SECOND_1 * 15)
+#define MS_SECOND_30 (MS_SECOND_1 * 30)
+#define MS_MINUTE_1  (MS_SECOND_1 * 60)
+
+#define MS_MINUTE_2  (MS_MINUTE_1 * 2)
+#define MS_MINUTE_5  (MS_MINUTE_1 * 5)
+#define MS_MINUTE_10 (MS_MINUTE_1 * 10)
+#define MS_MINUTE_30 (MS_MINUTE_1 * 30)
+#define MS_HOUR_1    (MS_MINUTE_1 * 60)
 
 enum miner_state {
 	MINER_INIT = 1,
@@ -98,19 +101,49 @@ struct ASIC_INFO {
 	uint64_t hashrate;           // Estimated hashrate = cores x chips x frequency
 };
 
+struct COMPAC_NONCE {
+	int asic;
+	unsigned char rx[BUFFER_MAX];
+	size_t len;
+	size_t prelen;
+};
+
+#define DATA_NONCE(_item) ((struct COMPAC_NONCE *)(_item->data))
+#define ALLOC_NLIST_ITEMS 256
+#define LIMIT_NLIST_ITEMS 0
+
+// BM1397 info->job_id offsets to check (when job_id is wrong)
+static int cur_attempt[] = { 0, -4, -8, -12 };
+#define CUR_ATTEMPT (sizeof(cur_attempt)/sizeof(int))
+
+// macro to adjust frequency choices to be an integer multple of info->freq_base
+#define FREQ_BASE(_f) (ceil((float)(_f) / info->freq_base) * info->freq_base)
+
+// macro to add/subtract from the job_id but roll in the min...max range
+#define JOB_ID_ROLL(_jid, _add, _info) \
+	((_info)->min_job_id + (((_jid) + (_add) - (_info)->min_job_id) % \
+		((_info)->max_job_id + 1 - (_info)->min_job_id)))
+
 struct COMPAC_INFO {
 
-	enum sub_ident ident;            // Miner identity
-	enum miner_state mining_state;   // Miner state
-	enum miner_asic asic_type;       // ASIC Type
-	struct thr_info *thr;            // Running Thread
-	struct thr_info rthr;            // Listening Thread
-	struct thr_info wthr;            // Miner Work Thread
+	enum sub_ident ident;		// Miner identity
+	enum miner_state mining_state;	// Miner state
+	enum miner_asic asic_type;	// ASIC Type
+	struct thr_info *thr;		// Running Thread
+	struct thr_info rthr;		// Listening Thread
+	struct thr_info wthr;		// Miner Work Thread
 
-	pthread_mutex_t lock;        // Mutex
-	pthread_mutex_t wlock;       // Mutex Serialize Writes
-	pthread_mutex_t rlock;       // Mutex Serialize Reads
+	pthread_mutex_t lock;		// Mutex
+	pthread_mutex_t wlock;		// Mutex Serialize Writes
+	pthread_mutex_t rlock;		// Mutex Serialize Reads
 
+	struct thr_info nthr;		// GSF Nonce Thread
+	K_LIST *nlist;			// GSF Nonce list
+	K_LIST *nstore;			// GSF Nonce store
+
+	float freq_mult;	     // frequency multiplier
+	float freq_base;	     // frequency mod value
+	float step_freq;	     // frequency step value
 	float frequency;             // Chip Average Frequency
 	float frequency_asic;        // Highest of current asics.
 	float frequency_default;     // ASIC Frequency on RESET
@@ -128,6 +161,9 @@ struct COMPAC_INFO {
 	float eff_wu;                // wu : expected wu
 	float tune_up;               // Increase frequency when eff_gs is above value
 	float tune_down;             // Decrease frequency when eff_gs is below value
+	float freq_fail;	     // last freq set failure on BM1397
+	float comp_adj;		     // frequency_computed adjustment for chip
+	float hr_scale;		     // scale adjustment for hashrate
 
 	float micro_temp;            // Micro Reported Temp
 	float wait_factor;           // Used to compute max_task_wait
@@ -136,7 +172,7 @@ struct COMPAC_INFO {
 	float scanhash_ms;           // Sleep time inside scanhash loop
 	float task_ms;               // Avg time(ms) between task sent to device
 	uint32_t fullscan_us;        // Estimated time(us) for full nonce range
-	uint64_t hashrate;           // Estimated hashrate = cores x chips x frequency
+	uint64_t hashrate;           // Estimated hashrate = cores x chips x frequency x hr_scale
 	uint64_t busy_work;
 
 	uint64_t task_hcn;           // Hash Count Number - max nonce iter.
@@ -160,6 +196,7 @@ struct COMPAC_INFO {
 	int vcore;                   // Core voltage
 	int micro_found;             // Found a micro to communicate with
 
+	bool can_boost;		     // true if boost is possible
 	bool vmask;                  // Current pool's vmask
 	bool boosted;                // Good nonce found for midstate2/3/4
 	bool report;
@@ -179,6 +216,8 @@ struct COMPAC_INFO {
 	uint32_t job_id;             // JobId incrementer
 	int32_t log_wide;            // Extra output in widescreen mode
 	uint32_t low_hash;           // Tracks of low hashrate
+	uint32_t min_job_id;         // JobId start/rollover
+	uint32_t add_job_id;         // JobId increment
 	uint32_t max_job_id;         // JobId cap
 	uint64_t max_task_wait;      // Micro seconds to wait before next task is sent
 	uint32_t ramping;            // Ramping incrementer
@@ -208,9 +247,22 @@ struct COMPAC_INFO {
 	struct timeval last_wu_increase;        // Last wu_max change
 	struct timeval last_pool_lost;          // Last time we lost pool
 
+	struct timeval first_task;
+	uint64_t tasks;
+	uint64_t cur_off[CUR_ATTEMPT];
+
+	double last_work_diff;			// Diff of last work sent
+	struct timeval last_ticket_attempt;	// List attempt to set ticket
+	int ticket_number;			// offset in ticket array
+	int ticket_work;			// work sent since ticket set
+	int64_t ticket_nonces;			// nonces since ticket set
+	int64_t below_nonces;			// nonces too low since ticket set
+	bool ticket_ok;				// ticket working ok
+	bool ticket_got_low;			// nonce found close to but >= diff
+	int ticket_failures;			// Must not exceed MAX_TICKET_CHECK
 	struct ASIC_INFO asics[255];
-	bool active_work[JOB_MAX];              // Tag good and stale work
-	struct work *work[JOB_MAX];             // Work ring buffer
+	bool active_work[JOB_MAX+1];            // Tag good and stale work
+	struct work *work[JOB_MAX+1];           // Work ring buffer
 
 	unsigned char task[BUFFER_MAX];         // Task transmit buffer
 	unsigned char cmd[BUFFER_MAX];          // Command transmit buffer
