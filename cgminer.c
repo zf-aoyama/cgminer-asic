@@ -193,6 +193,7 @@ static FILE *benchfile_in;
 static int benchfile_line;
 static int benchfile_work;
 static bool opt_benchmark;
+static bool opt_blockcheck;
 bool have_longpoll;
 bool want_per_device_stats;
 bool use_syslog;
@@ -1822,6 +1823,9 @@ static struct opt_table opt_config_table[] = {
 		     opt_set_charp, NULL, &opt_bitmine_a1_options,
 		     "Bitmine A1 options ref_clk_khz:sys_clk_khz:spi_clk_khz:override_chip_num"),
 #endif
+	OPT_WITHOUT_ARG("--block-check",
+			opt_set_bool, &opt_blockcheck,
+			"Run a block diff check of the binary then exit"),
 #ifdef USE_BITFURY
 	OPT_WITH_ARG("--bxf-bits",
 		     set_int_32_to_63, opt_show_intval, &opt_bxf_bits,
@@ -6101,7 +6105,7 @@ static void __maybe_unused set_highprio(void)
 #endif
 }
 
-static void set_lowprio(void)
+static void __maybe_unused set_lowprio(void)
 {
 #ifndef WIN32
 	int ret = nice(10);
@@ -10529,6 +10533,102 @@ int main(int argc, char *argv[])
 
 	if (!config_loaded)
 		load_default_config();
+
+	// use this to test diff value handing on various builds and architectures.
+	// since share submission depends on the difficulty calculated vs the pool
+	// work requirement, if this test fails, cgminer could discard a block due
+	// to the difficulty calculation being wrong and too low vs the pool work
+	if (opt_blockcheck)
+	{
+// how many bits are skipped for diffone
+#define BC_DIFF1_BITS 32
+// number of bits in a hash
+#define BC_MAX_BITS 256
+// number of bits set to 1 for diffone
+#define BC_TEST_BITS 16
+#define HEX_BYTE 8
+// ratio limits on the difference between actual and test
+#define BC_DELTA_PLUS_LIM 0.00000001
+#define BC_DELTA_MINUS_LIM (-0.00000001)
+
+		struct work test_work;
+
+#define ASSERTbc(condition) __maybe_unused static char sizeof_work_hash_must_be_32[(condition)?1:-1]
+ASSERTbc(sizeof(test_work.hash) == (BC_MAX_BITS / HEX_BYTE));
+
+		double test, delta, ratio, change, powval, powdelta, powratio;
+		double diff = 1.0, prevdiff = 0.0, prevtest = 0.0;
+		bool deltabad, diffbad, fail = false;
+		int i, byte, j;
+
+		for (i = BC_DIFF1_BITS; i < BC_MAX_BITS - BC_TEST_BITS; i += HEX_BYTE)
+		{
+			byte = ((BC_MAX_BITS - 1) - i) / HEX_BYTE;
+
+			// set the hash value to 0000...00ffff00...0000
+
+			for (j = 0; j < (BC_MAX_BITS / HEX_BYTE); j++)
+				test_work.hash[j] = 0;
+
+			// BC_TEST_BITS
+			test_work.hash[byte] = 0xff;
+			test_work.hash[byte - 1] = 0xff;
+
+			// Of course MUST use the same calculation as all diff value tests
+			//  use to decide when to submit shares
+			test = truediffone / le256todouble(test_work.hash);
+
+			delta = diff - test;
+			ratio = delta / diff;
+
+			if (ratio < BC_DELTA_MINUS_LIM || ratio > BC_DELTA_PLUS_LIM)
+			{
+				deltabad = true;
+				fail = true;
+			}
+			else
+				deltabad = false;
+
+			powval = pow(2.0, (double)(i - BC_DIFF1_BITS));
+			powdelta = diff - powval;
+			powratio = powdelta / powval;
+
+			if (powratio < BC_DELTA_MINUS_LIM || powratio > BC_DELTA_PLUS_LIM)
+			{
+				diffbad = true;
+				fail = true;
+			}
+			else
+				diffbad = false;
+
+			if (diff < prevdiff || test < prevtest)
+				fail = true;
+
+			printf("%3d%s%s real=%.8E calc=%.8E delta=%.8E%s pow=%.8E powdelta=%.8E%s\n",
+				i, (diff < prevdiff) ? " FATAL DROP IN DIFF:": "",
+				(test < prevtest) ? " FATAL DROP IN TEST:": "", diff,
+				test, delta, deltabad ? " DELTA TOO LARGE!" : "",
+				powval, powdelta, diffbad ? " POW DELTA TOO LARGE!" : "");
+
+			prevtest = test;
+			prevdiff = diff;
+
+			diff *= (1 << HEX_BYTE);
+
+			change = diff / prevdiff;
+			if (change != (1 << HEX_BYTE))
+			{
+				fail = true;
+				printf("FATAL for %d double size doesn't handle above %.8E\n", i, prevdiff);
+			}
+		}
+		if (fail)
+			printf("\nTEST FAILED! See above.\n");
+		else
+			printf("\nTest succeeded.\n");
+
+		return 0;
+	}
 
 	if (opt_benchmark || opt_benchfile) {
 		struct pool *pool;
