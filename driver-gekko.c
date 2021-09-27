@@ -1,5 +1,6 @@
 /*
  * Copyright 2017-2021 vh
+ * Copyright 2021 sidehack
  * Copyright 2021 kano
  *
  * This program is free software; you can redistribute it and/or modify it
@@ -1266,6 +1267,7 @@ static void *compac_mine(void *object)
 	uint64_t hashes = 0;
 	double rolling_minute[SAMPLE_SIZE] = {0};
 	char str_frequency[1024];
+	float g_new_frequency = 0;
 
 	int adjustable = 0;
 
@@ -1637,8 +1639,6 @@ static void *compac_mine(void *object)
 
 				if (ping_itr == 0 && asic->frequency != info->frequency_requested)
 				{
-					float new_frequency = asic->frequency;
-
 					// catching up after reset
 					if (asic->frequency < info->frequency_computed)
 					{
@@ -1677,32 +1677,32 @@ static void *compac_mine(void *object)
 					}
 
 					if (asic->frequency >= info->frequency_requested)
-						new_frequency = info->frequency_requested;
+						g_new_frequency = info->frequency_requested;
 					else
 					{
-						if (new_frequency < info->frequency_asic)
-							new_frequency = info->frequency_asic;
+						if (g_new_frequency < info->frequency_asic)
+							g_new_frequency = info->frequency_asic;
 						else
-							new_frequency = asic->frequency + info->step_freq;
+							g_new_frequency = asic->frequency + info->step_freq;
 
-						if (new_frequency > info->frequency_requested)
-							new_frequency = info->frequency_requested;
+						if (g_new_frequency > info->frequency_requested)
+							g_new_frequency = info->frequency_requested;
 
-						//if (new_frequency < info->frequency_start)
+						//if (g_new_frequency < info->frequency_start)
 						//{
-							//new_frequency = info->frequency_start;
-							//new_frequency = asic->frequency + info->step_freq;
+							//g_new_frequency = info->frequency_start;
+							//g_new_frequency = asic->frequency + info->step_freq;
 						//}
 						// limit to one adjust per 5 seconds if last set failed.
-						if (new_frequency == asic->frequency_set
+						if (g_new_frequency == asic->frequency_set
 						&& ms_tdiff(&now, &asic->last_frequency_adjust) < MS_SECOND_5)
 							adjustable = 0;
 
 						if (!adjustable)
-							new_frequency = asic->frequency;
+							g_new_frequency = asic->frequency;
 					}
 
-					if (asic->frequency != new_frequency)
+					if (asic->frequency != g_new_frequency)
 					{
 						cgtime(&info->last_frequency_adjust);
 						cgtime(&asic->last_frequency_adjust);
@@ -1711,17 +1711,17 @@ static void *compac_mine(void *object)
 						frequency_updated = 1;
 						if (info->asic_type == BM1397)
 						{
-							compac_set_frequency(compac, new_frequency);
+							compac_set_frequency(compac, g_new_frequency);
 						}
 						else if (info->asic_type == BM1387)
 						{
-							compac_set_frequency_single(compac, new_frequency, info->frequency_fo);
+							compac_set_frequency_single(compac, g_new_frequency, info->frequency_fo);
 						}
 						else if (info->asic_type == BM1384)
 						{
 							if (info->frequency_fo == 0)
 							{
-								compac_set_frequency(compac, new_frequency);
+								compac_set_frequency(compac, g_new_frequency);
 								compac_send_chain_inactive(compac);
 							}
 						}
