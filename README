@@ -156,17 +156,9 @@ Basic *nix build instructions:
 	directory directly, but you may do make install if you wish to install
 	cgminer to a system location or location you specified.
 
-Building for windows:
+Building on Windows10:
 
-It is actually easiest to build a windows binary using cross compilation tools
-provided by "mxe" available at http://mxe.cc/ (use the 32 bit one!)
-Once you have followed the instructions for building mxe:
-	export PATH=(path/to/mxe)/usr/bin/:$PATH
-	CFLAGS="-O2 -Wall -W -march=i686" ./configure --host=i686-pc-mingw32 <options>
-	make
-
-Native WIN32 build instructions: see windows-build.txt but these instructions
-are now hopelessly out of date.
+see windows-build.txt
 
 ---
 
@@ -828,7 +820,7 @@ The status window is split into overall status and per device status.
 Overall status:
 
 The output line shows the following:
- (5s):2.469T (1m):2.677T (5m):2.040T (15m):1.014T (avg):2.733Th/s
+ (5s):1.398T (1m):1.322T (5m):1.305T (15m):1.309T (avg):1.317Th/s
 
 These are exponentially decaying average hashrates over 5s/1m/5m/15m and an
 average since the start.
@@ -854,13 +846,13 @@ GF is Getwork Fail Occasions (server slow to provide work)
 RF is Remote Fail occasions (server slow to accept work)
 
 Followed by:
- Connected to pool.com diff 3.45K with stratum as user me
+ Connected to stratum.kano.is diff 3.45K with stratum as user Kano
 
 The diff shown is the current vardiff requested by the pool currently being
 mined at.
 
 Followed by:
-Block: ca0d237f...  Diff:5.01G  Started: [00:14:27]  Best share: 1.18M
+Block: b1a8c743...  Diff:19T  Started: [00:14:27.666]  Best share: 1.18M
 
 This shows a short stretch about the current block, when the new block started,
 and the all time best difficulty share you've found since starting cgminer
@@ -868,7 +860,7 @@ this time.
 
 Per device status:
 
- 6: HFS Random  : 645MHz  85C  13% 0.79V  | 2.152T / 1.351Th/s
+ 0: GSF 100nnnnn: 400.00MHz  85C  13% 0.79V  | 263.5G / 263.7Gh/s WU:18901.8/m
 
 Each column is as follows:
 Temperature (if supported)
@@ -877,15 +869,15 @@ Voltage (if supported)
 
 A 5 second exponentially decaying average hash rate
 An all time average hash rate
+The work utility defined as the number of diff1 shares work / minute
 
 alternating with
 
- 6: HFS Random  : 645MHz  86C  13% 0.80V  | A:290348 R:1067 HW:88 WU:18901.8/m
+ 0: GSF 100nnnnn: 400.00MHz  86C  13% 0.80V  | A:290348 R:1067 HW:88
 
 The total difficulty of accepted shares
 The total difficulty of rejected shares
 The number of hardware erorrs
-The work utility defined as the number of diff1 shares work / minute
 
 
 LOG WINDOW
@@ -893,8 +885,8 @@ LOG WINDOW
 All running information is shown here, usually share submission results and
 block update notifications, along with device messages and warnings.
 
- [2014-03-29 00:24:09] Accepted 1397768d Diff 3.35K/2727 HFS 0 pool 0
- [2014-03-29 00:24:13] Stratum from pool 0 detected new block
+ [2021-09-27 11:59:04.397] Accepted 1397768d Diff 3.35K/727 GSF 0 pool 0
+ [2021-09-27 12:59:05.397] Stratum from pool 0 detected new block at height 702417
 
 
 ---
@@ -1133,10 +1125,6 @@ Q: The build fails with gcc is unable to build a binary.
 A: Remove the "-march=native" component of your CFLAGS as your version of gcc
 does not support it. Also -O2 is capital o 2, not zero 2.
 
-Q: Can you implement feature X?
-A: I can, but time is limited, and people who donate are more likely to get
-their feature requests implemented.
-
 Q: Work keeps going to my backup pool even though my primary pool hasn't
 failed?
 A: Cgminer checks for conditions where the primary pool is lagging and will
@@ -1173,15 +1161,14 @@ mined by these devices.
 
 Q: GUI version?
 A: No. The RPC interface makes it possible for someone else to write one
-though.
+though, and miner.php can create web page access to the RPC API
 
 Q: I'm having an issue. What debugging information should I provide?
 A: Start cgminer with your regular commands and add -D -T --verbose and provide
 the full startup output and a summary of your hardware and operating system.
 
 Q: Why don't you provide win64 builds?
-A: Win32 builds work everywhere and there is precisely zero advantage to a
-64 bit build on windows.
+A: Win32 builds work everywhere.
 
 Q: Is it faster to mine on windows or linux?
 A: It makes no difference in terms of performance. It comes down to choice of
@@ -1193,21 +1180,10 @@ Q: My network gets slower and slower and then dies for a minute?
 A; Try the --net-delay option if you are on a GBT server. This does nothing
 with stratum mining.
 
-Q: How do I tune for p2pool?
-A: It is also recommended to use --failover-only since the work is effectively
-like a different block chain, and not enabling --no-submit-stale. If mining with
-a BFL (fpga) minirig, it is worth adding the --bfl-range option.
-
 Q: I run PHP on windows to access the API with the example miner.php. Why does
 it fail when php is installed properly but I only get errors about Sockets not
 working in the logs?
 A: http://us.php.net/manual/en/sockets.installation.php
-
-Q: What is a PGA?
-A: Cgminer supports 3 FPGAs: BitForce, Icarus and ModMiner.
-They are Field-Programmable Gate Arrays that have been programmed to do Bitcoin
-mining. Since the acronym needs to be only 3 characters, the "Field-" part has
-been skipped.
 
 Q: What is an ASIC?
 A: They are Application Specify Integrated Circuit devices and provide the
@@ -1240,6 +1216,12 @@ A: The USB implementation on windows can be very flaky on some hardware and
 every time cgminer looks for new hardware to hotplug it it can cause these
 sorts of problems. You can disable hotplug with:
 --hotplug 0
+
+Q: What is a PGA?
+A: Cgminer supports 3 FPGAs: BitForce, Icarus and ModMiner.
+They are Field-Programmable Gate Arrays that have been programmed to do Bitcoin
+mining. Since the acronym needs to be only 3 characters, the "Field-" part has
+been skipped.
 
 Q: What should my Work Utility (WU) be?
 A: Work utility is the product of hashrate * luck and only stabilises over a
