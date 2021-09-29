@@ -2014,7 +2014,7 @@ static void *compac_listen2(struct cgpu_info *compac, struct COMPAC_INFO *info)
 	struct timeval now;
 	uint32_t err = 0;
 	bool notnonce;
-	int read_bytes, rxb = 0, tmo, pos = 0, len, i, j, prelen;
+	int read_bytes, tmo, pos = 0, len, i, prelen;
 	K_ITEM *item;
 
 	memset(rx, 0, BUFFER_MAX);
@@ -2565,10 +2565,8 @@ static int64_t compac_scanwork(struct thr_info *thr)
 
 	struct timeval now;
 	int read_bytes;
-	uint32_t err = 0;
 	uint64_t hashes = 0;
 	uint64_t xhashes = 0;
-	uint32_t sleep_us = bound(info->scanhash_ms * 1000, 100, MS_SECOND_1 / 2 * 1000);
 
 	if (info->chips == 0)
 		cgsleep_ms(10);
@@ -2690,7 +2688,7 @@ static struct cgpu_info *compac_detect_one(struct libusb_device *dev, struct usb
 {
 	struct cgpu_info *compac;
 	struct COMPAC_INFO *info;
-	int err, i;
+	int i;
 	bool exclude_me = 0;
 	uint32_t baudrate = CP210X_DATA_BAUD;
 	unsigned int bits = CP210X_BITS_DATA_8 | CP210X_BITS_PARITY_MARK;
@@ -2835,8 +2833,6 @@ static bool compac_prepare(struct thr_info *thr)
 {
 	struct cgpu_info *compac = thr->cgpu;
 	struct COMPAC_INFO *info = compac->device_data;
-	int i;
-	int read_bytes = 1;
 	bool miner_ok = true;
 	int device = (compac->usbinfo.bus_number * 0xff + compac->usbinfo.device_address) % 0xffff;
 
