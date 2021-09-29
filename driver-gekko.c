@@ -49,7 +49,6 @@ uint32_t bmcrc(unsigned char *ptr, uint32_t len)
 
 void dumpbuffer(struct cgpu_info *compac, int LOG_LEVEL, char *note, unsigned char *ptr, uint32_t len)
 {
-	struct COMPAC_INFO *info = compac->device_data;
 	if (opt_log_output || LOG_LEVEL <= opt_log_level) {
 		char str[2048];
 		const char * hex = "0123456789ABCDEF";
@@ -82,7 +81,7 @@ static int compac_micro_send(struct cgpu_info *compac, uint8_t cmd, uint8_t chan
 	int micro_temp;
 	uint8_t temp;
 	unsigned short usb_val;
-	char null[255];
+	__maybe_unused char null[255];
 
 	// synchronous : safe to run in the listen thread.
 	if (!info->micro_found) {
@@ -136,7 +135,6 @@ static int compac_micro_send(struct cgpu_info *compac, uint8_t cmd, uint8_t chan
 	cgsleep_ms(2);
 
 	return read_bytes;
-
 }
 
 #define compac_send(_c, _r, _b, _crc) compac_send2(_c, _r, _b, _crc, NULL)
@@ -144,7 +142,6 @@ static void compac_send2(struct cgpu_info *compac, unsigned char *req_tx, uint32
 {
 	struct COMPAC_INFO *info = compac->device_data;
 	int read_bytes = 1;
-	int read_wait = 0;
 	unsigned int i, off = 0;
 
 	// leave original buffer intact
@@ -177,7 +174,7 @@ applog(LOG_ERR, "%s()  [%02x %02x %02x %02x %02x %02x %02x %02x]", __func__,
 
 	int log_level = (bytes < info->task_len) ? LOG_INFO : LOG_INFO;
 
-	dumpbuffer(compac, LOG_INFO, "TX", info->cmd, bytes);
+	dumpbuffer(compac, log_level, "TX", info->cmd, bytes);
 	usb_write(compac, (char *)(info->cmd), bytes, &read_bytes, C_REQUESTRESULTS);
 
 	//let the usb frame propagate
@@ -610,7 +607,6 @@ static void compac_set_frequency_single(struct cgpu_info *compac, float frequenc
 {
 	struct COMPAC_INFO *info = compac->device_data;
 	struct ASIC_INFO *asic = &info->asics[asic_id];
-	uint32_t i, r, r1, r2, r3, p1, p2, pll;
 
 	if (info->asic_type == BM1387) {
 		unsigned char buffer[] = {0x48, 0x09, 0x00, 0x0C, 0x00, 0x50, 0x02, 0x41, 0x00};   //250MHz -- osc of 25MHz
@@ -901,9 +897,10 @@ static void compac_gsf_nonce(struct cgpu_info *compac, K_ITEM *item)
 						info->cur_off[i]++;
 						ok = true;
 
-						applog(LOG_INFO, "%d: %s %d - Nonce Recovered : %08x @ job[%02x]->fix[%02x] len %lu prelen %lu",
+						applog(LOG_INFO, "%d: %s %d - Nonce Recovered : %08x @ job[%02x]->fix[%02x] len %u prelen %u",
 							compac->cgminer_id, compac->drv->name, compac->device_id,
-							nonce, job_id, w_job_id, DATA_NONCE(item)->len, DATA_NONCE(item)->prelen);
+							nonce, job_id, w_job_id, (uint32_t)(DATA_NONCE(item)->len),
+							(uint32_t)(DATA_NONCE(item)->prelen));
 					}
 				}
 			}
@@ -1266,7 +1263,6 @@ static void *compac_mine(void *object)
 	uint32_t itr = 0;
 	uint64_t hashes = 0;
 	double rolling_minute[SAMPLE_SIZE] = {0};
-	char str_frequency[1024];
 	float g_new_frequency = 0;
 
 	int adjustable = 0;
@@ -1858,7 +1854,7 @@ static void *compac_handle_rx(void *object, int read_bytes, int path)
 	struct cgpu_info *compac = (struct cgpu_info *)object;
 	struct COMPAC_INFO *info = compac->device_data;
 	struct ASIC_INFO *asic;
-	int crc_ok, cmd_resp;
+	int cmd_resp;
 	unsigned int i;
 	struct timeval now;
 
@@ -2229,7 +2225,7 @@ static void *compac_listen(void *object)
 	unsigned char *prx = rx;
 	int read_bytes, cmd_resp, pos;
 	uint32_t err = 0;
-	unsigned int i, j, rx_bytes;
+	unsigned int i, rx_bytes;
 
 	memset(rx, 0, BUFFER_MAX);
 	memset(info->rx, 0, BUFFER_MAX);
@@ -2833,7 +2829,6 @@ static bool compac_prepare(struct thr_info *thr)
 {
 	struct cgpu_info *compac = thr->cgpu;
 	struct COMPAC_INFO *info = compac->device_data;
-	bool miner_ok = true;
 	int device = (compac->usbinfo.bus_number * 0xff + compac->usbinfo.device_address) % 0xffff;
 
 	mutex_lock(&static_lock);
