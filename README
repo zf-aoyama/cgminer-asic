@@ -598,13 +598,16 @@ or
 This means you need to associate your device with the WinUSB driver.
 
 The best solution for this is to use a tool called Zadig to set the driver:
- http://sourceforge.net/projects/libwdi/files/zadig/
+ https://sourceforge.net/projects/libwdi/files/zadig/
+They've moved the latest versions to:
+  https://zadig.akeo.ie/
 
 This allows you set the driver for the device to be WinUSB which is
 required to make it work if you're having problems.
 With Zadig, you will need to run it as administrator and if your device is
 plugged in but you cannot see it, use the Menu: Options -> List All Devices
-and you should be able to see the device as something like: "GekkoScience"
+and you should be able to see the device in the drop down list as something
+like: "CompacF Bitcoin Miner"
 Choose the install or replace driver option and select WinUSB.
 
 When you first switch a device over to WinUSB with Zadig and it shows that
