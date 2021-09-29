@@ -12,7 +12,8 @@ fi
 # install the mingw toolchain and mxe required packages - may require sudo
 if [ "$1" = "a" ] ; then
  shift
- apt install -y build-essential libtool autotools-dev automake pkg-config p7zip-full autopoint bison flex libgdk-pixbuf2.0-dev gperf intltool libtool-bin lzip python ruby unzip "$@"
+ apt install -y build-essential libtool autotools-dev automake pkg-config p7zip-full autopoint \
+  bison flex libgdk-pixbuf2.0-dev gperf intltool libtool-bin lzip python ruby unzip "$@"
  exit $?
 fi
 # download mxe
@@ -23,7 +24,6 @@ fi
 # build mxe libraries required for cgminer ... this takes a long time ...
 if [ "$1" = "b" ] ; then
  shift
- git checkout build-2020-06-06 # the versions after this fail to build cmake on WSL
  MXE_TARGETS='i686-w64-mingw32.static' make -j 4 libusb1 pthreads curl ncurses pdcurses "$@"
  exit $?
 fi
@@ -34,7 +34,8 @@ if [ "$1" = "c" -o "$1" = "d" ] ; then
   dbg="-g "
  fi
  shift
- PATH="$HOME/mxe/usr/bin:$PATH" PKG_CONFIG_PATH="$HOME/mxe/usr/i686-w64-mingw32.static/lib/pkgconfig/" CFLAGS="$dbg-W -Wall -O2 -static" ./configure --host=i686-w64-mingw32.static --enable-static --disable-shared "$@"
+ PATH="$HOME/mxe/usr/bin:$PATH" PKG_CONFIG_PATH="$HOME/mxe/usr/i686-w64-mingw32.static/lib/pkgconfig/" \
+  CFLAGS="$dbg-W -Wall -O2 -static" ./configure --host=i686-w64-mingw32.static --enable-static --disable-shared "$@"
  exit $?
 fi
 # build cgminer

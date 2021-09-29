@@ -982,7 +982,7 @@ entry or a backup to any other pooled mining.
 To use local solo mining, you must be running a local bitcoind/bitcoin-qt or
 have one you have rpc access to.
 Warning, you must have fast network access to large mining pools to ensure that
-any blocks you find are distributed very quickly to the bitocin network.
+any blocks you find are distributed very quickly to the bitcoin network.
 To solo mine locally, edit your bitcoind configuration file (bitcoin.conf)
 with the following extra lines, using your choice of username and password:
 

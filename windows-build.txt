@@ -64,8 +64,13 @@ How to cross compile cgminer using MXE on WSL or linux
  cd
  cgminer/mxe.sh mxe
  cd mxe/
+
+** The versions of MXE after build-2020-06-06 fail to build cmake on WSL
+** You can skip this line if they ever fix that:
+ git checkout build-2020-06-06
+
 ** This compiles the mxe code needed - it can take a few hours in WSL ...
-** It also downloads each package it needs to build
+** It also downloads each package it needs to build:
  ../cgminer/mxe.sh b
 
 ** Build cgminer:
