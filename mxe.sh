@@ -5,6 +5,9 @@
 # If it needs updating, raise an issue on https://githib.com/kanoi/cgminer
 # You can of course type the commands yourself and modify them as needed
 #
+# Change this if you choose to install/build mxe somewhere else
+ho="$HOME/mxe"
+#
 if [ "k$1" = "k" ] ; then
  echo "ERR: Missing parameter(s)"
  exit 1
@@ -34,13 +37,13 @@ if [ "$1" = "c" -o "$1" = "d" ] ; then
   dbg="-g "
  fi
  shift
- PATH="$HOME/mxe/usr/bin:$PATH" PKG_CONFIG_PATH="$HOME/mxe/usr/i686-w64-mingw32.static/lib/pkgconfig/" \
+ PATH="$ho/usr/bin:$PATH" PKG_CONFIG_PATH="$ho/usr/i686-w64-mingw32.static/lib/pkgconfig/" \
   CFLAGS="$dbg-W -Wall -O2 -static" ./configure --host=i686-w64-mingw32.static --enable-static --disable-shared "$@"
  exit $?
 fi
 # build cgminer
 if [ "$1" = "make" ] ; then
  shift
- PATH="$HOME/mxe/usr/bin:$PATH" PKG_CONFIG_PATH="$HOME/mxe/usr/i686-w64-mingw32.static/lib/pkgconfig/" make "$@"
+ PATH="$ho/usr/bin:$PATH" PKG_CONFIG_PATH="$ho/usr/i686-w64-mingw32.static/lib/pkgconfig/" make "$@"
  exit $?
 fi
