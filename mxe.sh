@@ -12,7 +12,7 @@ if [ "k$1" = "k" ] ; then
  echo "ERR: Missing parameter(s)"
  exit 1
 fi
-# install the mingw toolchain and mxe required packages - may require sudo
+# install the packages required by mxe - may require sudo
 if [ "$1" = "a" ] ; then
  shift
  apt install -y build-essential libtool autotools-dev automake pkg-config p7zip-full autopoint \
