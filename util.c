@@ -1346,18 +1346,18 @@ static void __maybe_unused timersubspec(struct timespec *a, const struct timespe
 	spec_nscheck(a);
 }
 #else /* USE_BITMAIN_SOC */
-static int timespec_to_ms(struct timespec *ts)
+static int __maybe_unused timespec_to_ms(struct timespec *ts)
 {
 	return ts->tv_sec * 1000 + ts->tv_nsec / 1000000;
 }
 
-static int64_t timespec_to_us(struct timespec *ts)
+static int64_t __maybe_unused timespec_to_us(struct timespec *ts)
 {
 	return (int64_t)ts->tv_sec * 1000000 + ts->tv_nsec / 1000;
 }
 
 /* Subtract b from a */
-static void timersubspec(struct timespec *a, const struct timespec *b)
+static void __maybe_unused timersubspec(struct timespec *a, const struct timespec *b)
 {
 	a->tv_sec -= b->tv_sec;
 	a->tv_nsec -= b->tv_nsec;
