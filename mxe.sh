@@ -32,13 +32,13 @@ if [ "$1" = "b" ] ; then
 fi
 # setup the cgminer build
 if [ "$1" = "c" -o "$1" = "d" ] ; then
- dbg=""
+ dbg="-O2"
  if [ "k$1" = "kd" ] ; then
-  dbg="-g "
+  dbg="-g -O1"
  fi
  shift
  PATH="$ho/usr/bin:$PATH" PKG_CONFIG_PATH="$ho/usr/i686-w64-mingw32.static/lib/pkgconfig/" \
-  CFLAGS="$dbg-W -Wall -O2 -static" ./configure --host=i686-w64-mingw32.static --enable-static --disable-shared "$@"
+  CFLAGS="-W -Wall $dbg -static -fcommon" ./configure --host=i686-w64-mingw32.static --enable-static --disable-shared "$@"
  exit $?
 fi
 # build cgminer
