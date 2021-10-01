@@ -72,10 +72,10 @@ BUILDING CGMINER FOR YOURSELF
 
 DEPENDENCIES:
 Mandatory:
-	pkg-config		http://www.freedesktop.org/wiki/Software/pkg-config
-	libtool			http://www.gnu.org/software/libtool/
+	pkg-config      http://www.freedesktop.org/wiki/Software/pkg-config
+	libtool         http://www.gnu.org/software/libtool/
 Optional:
-	curl dev library 	http://curl.haxx.se/libcurl/
+	curl dev library        http://curl.haxx.se/libcurl/
 	(libcurl4-openssl-dev - Must tell configure --disable-libcurl otherwise
 	it will attempt to compile it in)
 
@@ -95,13 +95,14 @@ Optional:
 	Will use a copy included with the source if unavailable.
 
 If building from git:
+	git           (of course)
 	autoconf
 	automake
 
 If building on Ubuntu:
-	sudo apt-get install build-essential autoconf automake libtool pkg-config \
-                             libcurl4-openssl-dev libudev-dev libusb-1.0-0-dev \
-                             libncurses5-dev
+	sudo apt-get install build-essential autoconf automake libtool \
+                             pkg-config libcurl4-openssl-dev libudev-dev \
+                             libusb-1.0-0-dev libncurses5-dev zlib1g-dev git
 
 CGMiner specific configuration options:
   --enable-ants1          Compile support for Antminer S1 Bitmain (default
