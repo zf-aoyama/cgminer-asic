@@ -1078,6 +1078,8 @@ extern int opt_gekko_gsf_freq;
 extern int opt_gekko_gsh_vcore;
 extern int opt_gekko_start_freq;
 extern int opt_gekko_step_delay;
+extern bool opt_gekko_mine2;
+extern int opt_gekko_tune2;
 #endif
 #ifdef USE_KLONDIKE
 extern char *opt_klondike_options;

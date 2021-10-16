@@ -19,11 +19,14 @@
 #define MS_SECOND_1  1000
 
 #define MS_SECOND_5  (MS_SECOND_1 * 5)
+#define MS_SECOND_10 (MS_SECOND_1 * 10)
 #define MS_SECOND_15 (MS_SECOND_1 * 15)
 #define MS_SECOND_30 (MS_SECOND_1 * 30)
 #define MS_MINUTE_1  (MS_SECOND_1 * 60)
 
 #define MS_MINUTE_2  (MS_MINUTE_1 * 2)
+#define MS_MINUTE_3  (MS_MINUTE_1 * 3)
+#define MS_MINUTE_4  (MS_MINUTE_1 * 4)
 #define MS_MINUTE_5  (MS_MINUTE_1 * 5)
 #define MS_MINUTE_10 (MS_MINUTE_1 * 10)
 #define MS_MINUTE_30 (MS_MINUTE_1 * 30)
@@ -101,11 +104,13 @@ struct ASIC_INFO {
 	uint64_t hashrate;           // Estimated hashrate = cores x chips x frequency
 };
 
-struct COMPAC_NONCE {
+struct COMPAC_NONCE
+{
 	int asic;
 	unsigned char rx[BUFFER_MAX];
 	size_t len;
 	size_t prelen;
+	struct timeval when;
 };
 
 #define DATA_NONCE(_item) ((struct COMPAC_NONCE *)(_item->data))
@@ -124,6 +129,58 @@ static int cur_attempt[] = { 0, -4, -8, -12 };
 	((_info)->min_job_id + (((_jid) + (_add) - (_info)->min_job_id) % \
 		((_info)->max_job_id + 1 - (_info)->min_job_id)))
 
+#define GHNUM (60*5)
+#define GHOFF(n) (((n) + GHNUM) % GHNUM)
+// a time jump without any nonces will reset the GEKKOHASH data
+//  this would normally be a miner failure, so should reset anyway,
+//  however under normal mining operation, using 10sec,
+//   a 6GH/s asic will have this happen, on average, about once every 10 days
+//   a 30GH/s asic is unlikely to have this happen in the life of the universe
+#define GHLIMsec 10
+
+// number of nonces that should give better than 80% accuracy
+// CDF[ERlang] 400 0.8 = 9.0991e-06
+#define GHNONCES 400
+
+// a loss of this much hash rate will reduce requested freq and reset
+#define GHREQUIRE 0.80
+
+// number of nonces needed before using as the rolling hash rate
+// N.B. 200Mhz ticket 16 GSF is around 2/sec
+// also, 8 has high variance ... but resets shouldn't be common
+// code adds 1 to this value since the first nonce isn't part of the H/s calc
+#define GHNONCENEEDED 8
+
+// running 5min nonce diff buffer (for GH/s)
+// offset = current second, GHOFF(offset-1) = previous second
+// GHOFF(offset-(GHNUM-1)) = GHOFF(offset+1) = oldest possible
+// GHOFF(offset-last) = oldest used
+// code is all linear except one loop that is almost always only
+//  one interation or total max one interation per second elapsed real time
+struct GEKKOHASH
+{
+	// seconds time of [offset]
+	time_t zerosec;
+	// the position of [0]
+	int offset;
+	// total diff in each second
+	int64_t diff[GHNUM];
+	// time of the first nonce in each second
+	struct timeval firstt[GHNUM];
+	// diff of first nonce in each second
+	int64_t firstd[GHNUM];
+	// time of the last nonce in each second
+	struct timeval lastt[GHNUM];
+	// number of nonces in each second
+	int noncenum[GHNUM];
+	// sum of diff[0..last-1]
+	int64_t diffsum;
+	// number of nonces in 0..last-1
+	int noncesum;
+	// last used offset 0 based
+	int last;
+};
+
 struct COMPAC_INFO {
 
 	enum sub_ident ident;		// Miner identity
@@ -140,14 +197,21 @@ struct COMPAC_INFO {
 	struct thr_info nthr;		// GSF Nonce Thread
 	K_LIST *nlist;			// GSF Nonce list
 	K_LIST *nstore;			// GSF Nonce store
+	pthread_mutex_t nlock;		// GSF lock
+	pthread_cond_t ncond;		// GSF wait
+	uint64_t ntimeout;		// GSF number of cond timeouts
+	uint64_t ntrigger;		// GSF number of cond tiggered
 
 	float freq_mult;	     // frequency multiplier
 	float freq_base;	     // frequency mod value
 	float step_freq;	     // frequency step value
+	float min_freq;              // Lowest frequency mine2 will tune down to
+	int ramp_time;               // time to allow for initial frequency ramp
 	float frequency;             // Chip Average Frequency
 	float frequency_asic;        // Highest of current asics.
 	float frequency_default;     // ASIC Frequency on RESET
 	float frequency_requested;   // Requested Frequency
+	float frequency_selected;    // Initial Requested Frequency
 	float frequency_start;       // Starting Frequency
 	float frequency_fail_high;   // Highest Frequency of Chip Failure
 	float frequency_fail_low;    // Lowest Frequency of Chip Failure
@@ -162,7 +226,6 @@ struct COMPAC_INFO {
 	float tune_up;               // Increase frequency when eff_gs is above value
 	float tune_down;             // Decrease frequency when eff_gs is below value
 	float freq_fail;	     // last freq set failure on BM1397
-	float comp_adj;		     // frequency_computed adjustment for chip
 	float hr_scale;		     // scale adjustment for hashrate
 
 	float micro_temp;            // Micro Reported Temp
@@ -179,7 +242,7 @@ struct COMPAC_INFO {
 	uint32_t prev_nonce;         // Last nonce found
 
 	int failing;                 // Flag failing sticks
-	int fail_count;              // Track failures.
+	int fail_count;              // Track failures = resets
 	int frequency_fo;            // Frequency check token
 	int frequency_of;            // Frequency check token
 	int accepted;                // Nonces accepted
@@ -263,6 +326,11 @@ struct COMPAC_INFO {
 	struct ASIC_INFO asics[255];
 	bool active_work[JOB_MAX+1];            // Tag good and stale work
 	struct work *work[JOB_MAX+1];           // Work ring buffer
+
+	pthread_mutex_t ghlock;			// Mutex for all access to gh
+	struct GEKKOHASH gh;			// running hash rate buffer
+	struct timeval tune_limit;		// time between tune checks
+	struct timeval last_tune_up;		// time of last tune up attempt
 
 	unsigned char task[BUFFER_MAX];         // Task transmit buffer
 	unsigned char cmd[BUFFER_MAX];          // Command transmit buffer

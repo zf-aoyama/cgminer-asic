@@ -326,6 +326,8 @@ int opt_gekko_bauddiv = 0;
 int opt_gekko_gsh_vcore = 400;
 int opt_gekko_start_freq = 100;
 int opt_gekko_step_delay = 15;
+bool opt_gekko_mine2 = false;
+int opt_gekko_tune2 = 0;
 #endif
 #ifdef USE_HASHRATIO
 #include "driver-hashratio.h"
@@ -1987,6 +1989,11 @@ static struct opt_table opt_config_table[] = {
 	OPT_WITH_ARG("--gekko-step-delay",
 		     set_int_0_to_9999, opt_show_intval, &opt_gekko_step_delay,
 		     "Ramp step interval range 1-600"),
+	OPT_WITHOUT_ARG("--gekko-mine2",
+			opt_set_bool, &opt_gekko_mine2, "Use mine2"),
+	OPT_WITH_ARG("--gekko-tune2",
+			set_int_0_to_9999, opt_show_intval, &opt_gekko_tune2,
+			"Tune up mine2 mins 30-9999, default 0=never"),
 #endif
 #ifdef HAVE_LIBCURL
 	OPT_WITH_ARG("--btc-address",
