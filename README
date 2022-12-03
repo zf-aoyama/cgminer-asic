@@ -9,6 +9,28 @@ modifications you make to this code MUST be provided by law if you distribute
 modified binaries. See COPYING for details.
 
 
+Search below for the following headings for details about mining
+
+EXECUTIVE SUMMARY ON USAGE
+BUILDING CGMINER FOR YOURSELF
+ If building from git
+ If building on Ubuntu
+ Basic *nix build instructions
+ Building on Windows10
+ Building on MacOS
+Usage instructions
+SETTING UP USB DEVICES
+ WINDOWS
+ LINUX
+ OSX
+ Advanced USB options
+SCREEN DISPLAY WHILE RUNNING
+MULTIPLE POOL CONNECTIONS
+ QUOTAS
+LOGGING
+FAQ
+
+
 GIT TREE:
 
 https://github.com/kanoi/cgminer
@@ -39,10 +61,6 @@ Single pool with stratum protocol support:
 
 cgminer -o stratum+tcp://pool:port -u username -p password
 
-Solo mining to local bitcoind:
-
-cgminer -o http://localhost:8332 -u username -p password --btc-address 1NezumikkTRoCUkGVPAp1TKJnJrYTLvhEz
-
 The list of proxy types are:
  http:    standard http 1.1 proxy
  http0:   http 1.0 proxy
@@ -66,8 +84,8 @@ Any configuration file may also contain a single
 to recursively include another configuration file.
 Writing the configuration will save all settings from all files in the output.
 
-
 ---
+
 BUILDING CGMINER FOR YOURSELF
 
 DEPENDENCIES:
@@ -157,9 +175,15 @@ Basic *nix build instructions:
 	directory directly, but you may do make install if you wish to install
 	cgminer to a system location or location you specified.
 
+
 Building on Windows10:
 
 see windows-build.txt
+
+
+Building on MacOS
+
+see mac-build.txt
 
 ---
 
@@ -741,7 +765,7 @@ If one of the 10 devices stops working, hotplug - if enabled, as is default
 
 ---
 
-WHILE RUNNING:
+SCREEN DISPLAY WHILE RUNNING:
 
 The following options are available while running with a single keypress:
 
@@ -808,6 +832,7 @@ the pool. The 2 diff values are the actual difficulty target that share reached
 followed by the difficulty target the pool is currently asking for.
 
 ---
+
 Also many issues and FAQs are covered in the forum thread
 dedicated to this program,
 	http://forum.bitcoin.org/index.php?topic=28402.0
@@ -892,9 +917,9 @@ block update notifications, along with device messages and warnings.
  [2021-09-27 11:59:04.397] Accepted 1397768d Diff 3.35K/727 GSF 0 pool 0
  [2021-09-27 12:59:05.397] Stratum from pool 0 detected new block at height 702417
 
-
 ---
-MULTIPOOL
+
+MULTIPLE POOL CONNECTIONS
 
 FAILOVER STRATEGIES WITH MULTIPOOL:
 A number of different strategies for dealing with multipool setups are
@@ -936,6 +961,7 @@ and uses it to try to end up doing the same amount of work for all pools.
 
 
 ---
+
 QUOTAS
 
 The load-balance multipool strategy works off a quota based scheduler. The
@@ -976,28 +1002,13 @@ quotas in a configuration file they would be specified thus:
 
 
 ---
+
 SOLO MINING
 
-Solo mining on your own bitcoin node can be done efficiently as a single pool
-entry or a backup to any other pooled mining.
-To use local solo mining, you must be running a local bitcoind/bitcoin-qt or
-have one you have rpc access to.
-Warning, you must have fast network access to large mining pools to ensure that
-any blocks you find are distributed very quickly to the bitcoin network.
-To solo mine locally, edit your bitcoind configuration file (bitcoin.conf)
-with the following extra lines, using your choice of username and password:
-
-rpcuser=username
-rpcpassword=password
-
-Restart bitcoind, then start cgminer, pointing to the bitcoind and choose a
-btc address with the following options, altering to suit their setup:
-
-cgminer -o http://localhost:8332 -u username -p password --btc-address 1NezumikkTRoCUkGVPAp1TKJnJrYTLvhEz
-
-Note the http:// is mandatory for solo mining.
+Solo mining doesn't currently work
 
 ---
+
 LOGGING
 
 cgminer will log to stderr if it detects stderr is being redirected to a file.
