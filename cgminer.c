@@ -1,5 +1,5 @@
 /*
- * Copyright 2011-2021 Andrew Smith
+ * Copyright 2011-2022 Andrew Smith
  * Copyright 2011-2018 Con Kolivas
  * Copyright 2011-2012 Luke Dashjr
  * Copyright 2010 Jeff Garzik
@@ -1967,7 +1967,7 @@ static struct opt_table opt_config_table[] = {
 		     "Set GekkoScience miner ramping hash threshold, rante 0-99"),
 	OPT_WITH_ARG("--gekko-wait-factor",
 		     set_float_0_to_500, opt_show_floatval, &opt_gekko_wait_factor,
-		     "Set GekkoScience miner task send wait factor, range 0.01-1.00"),
+		     "Set GekkoScience miner task send wait factor, range 0.01-2.00"),
 	OPT_WITH_ARG("--gekko-bauddiv",
 		     set_int_0_to_9999, opt_show_intval, &opt_gekko_bauddiv,
 		     "Set GekkoScience BM1387 baud divider {0: auto, 1: 1.5M, 7: 375K, 13: 214K, 25: 115K}"),
