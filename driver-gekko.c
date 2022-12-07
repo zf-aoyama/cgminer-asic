@@ -1881,7 +1881,7 @@ static void *compac_mine(void *object)
 		double dev_runtime, wu;
 		float frequency_computed;
 		bool low_eff = 0;
-		bool frequency_updated = 0;
+		bool frequency_updated = 0, has_freq;
 
 		info->update_work = 0;
 
@@ -1980,13 +1980,24 @@ static void *compac_mine(void *object)
 		// search for plateau
 		if (ms_tdiff(&now, &last_plateau_check) > MS_SECOND_5)
 		{
+			has_freq = false;
+			for (i = 0; i < info->chips; i++)
+			{
+				if (info->asics[i].frequency != 0)
+				{
+					has_freq = true;
+					break;
+				}
+			}
+
 			cgtime(&last_plateau_check);
 			for (i = 0; i < info->chips; i++)
 			{
 				struct ASIC_INFO *asic = &info->asics[i];
 				int plateau_type = 0;
 
-				if (ms_tdiff(&now, &asic->last_nonce) > asic->fullscan_ms * 60)
+				if (has_freq
+				&&  ms_tdiff(&now, &asic->last_nonce) > asic->fullscan_ms * 60)
 				{
 					plateau_type = PT_NONONCE;
 					applog(LOG_INFO, "%d: %s %d plateau_type PT_NONONCE [%u] %d > %.2f",
@@ -2301,6 +2312,23 @@ static void *compac_mine(void *object)
 			}
 		}
 
+		has_freq = false;
+		for (i = 0; i < info->chips; i++)
+		{
+			if (info->asics[i].frequency != 0)
+			{
+				has_freq = true;
+				break;
+			}
+		}
+
+		// don't bother with work if it's not mining
+		if (!has_freq)
+		{
+			cgsleep_ms(10);
+			continue;
+		}
+
 		work = get_queued(compac);
 
 		if (work)
@@ -2433,6 +2461,7 @@ static void *compac_mine2(void *object)
 	double dev_runtime, wu;
 	float frequency_computed;
 	bool frequency_updated;
+	bool has_freq;
 	bool job_added;
 
 	int plateau_type = 0;
@@ -2533,6 +2562,16 @@ static void *compac_mine2(void *object)
 			// search for plateau
 			if (ms_tdiff(&now, &last_plateau_check) > MS_SECOND_5)
 			{
+				has_freq = false;
+				for (i = 0; i < info->chips; i++)
+				{
+					if (info->asics[i].frequency != 0)
+					{
+						has_freq = true;
+						break;
+					}
+				}
+
 				cgtime(&last_plateau_check);
 				for (i = 0; i < info->chips; i++)
 				{
@@ -2541,7 +2580,8 @@ static void *compac_mine2(void *object)
 					// missing nonces
 					if (info->asic_type == BM1397)
 					{
-						if (i == 0 && ms_tdiff(&now, &info->last_nonce) > info->fullscan_ms * 60 * info->difficulty)
+						if (has_freq && i == 0
+						&&  ms_tdiff(&now, &info->last_nonce) > info->fullscan_ms * 60 * info->difficulty)
 						{
 							plateau_type = PT_NONONCE;
 							applog(LOG_INFO, "%d: %s %d - plateau_type PT_NONONCE [%u] %d > %.2f",
@@ -2553,7 +2593,8 @@ static void *compac_mine2(void *object)
 					}
 					else
 					{
-						if (ms_tdiff(&now, &asic->last_nonce) > asic->fullscan_ms * 60)
+						if (has_freq
+						&&  ms_tdiff(&now, &asic->last_nonce) > asic->fullscan_ms * 60)
 						{
 							plateau_type = PT_NONONCE;
 							applog(LOG_INFO, "%d: %s %d - plateau_type PT_NONONCE [%u] %d > %.2f",
@@ -2815,6 +2856,23 @@ static void *compac_mine2(void *object)
 					}
 				}
 			}
+		}
+
+		has_freq = false;
+		for (i = 0; i < info->chips; i++)
+		{
+			if (info->asics[i].frequency != 0)
+			{
+				has_freq = true;
+				break;
+			}
+		}
+
+		// don't bother with work if it's not mining
+		if (!has_freq)
+		{
+			cgsleep_ms(10);
+			continue;
 		}
 
 		work = get_queued(compac);
@@ -3662,7 +3720,11 @@ static bool compac_init(struct thr_info *thr)
 			break;
 		case IDENT_GSF:
 		case IDENT_GSFM:
-			info->frequency_requested = limit_freq(info, opt_gekko_gsf_freq, false);
+			if (info->ident == IDENT_GSF)
+				info->frequency_requested = limit_freq(info, opt_gekko_gsf_freq, false);
+			else
+				info->frequency_requested = limit_freq(info, opt_gekko_r909_freq, false);
+
 			info->frequency_start = limit_freq(info, opt_gekko_start_freq, false);
 			if (info->frequency_start < 100)
 				info->frequency_start = 100;
@@ -3679,10 +3741,6 @@ static bool compac_init(struct thr_info *thr)
 					info->frequency_start = 400;
 				}
 			}
-			// default gsf 200 target, but for gsfm switch to 450
-			if (info->ident == IDENT_GSFM
-			&&  info->frequency_requested == 200)
-				info->frequency_requested = 450;
 			// ensure request is >= start
 			if (info->frequency_requested < info->frequency_start)
 				info->frequency_requested = info->frequency_start;
@@ -3949,7 +4007,8 @@ static struct cgpu_info *compac_detect_one(struct libusb_device *dev, struct usb
 	info->ident = usb_ident(compac);
 
 	if (opt_gekko_gsc_detect || opt_gekko_gsd_detect || opt_gekko_gse_detect
-	||  opt_gekko_gsh_detect || opt_gekko_gsi_detect || opt_gekko_gsf_detect)
+	||  opt_gekko_gsh_detect || opt_gekko_gsi_detect || opt_gekko_gsf_detect
+	||  opt_gekko_r909_detect)
 	{
 		exclude_me  = (info->ident == IDENT_BSC && !opt_gekko_gsc_detect);
 		exclude_me |= (info->ident == IDENT_GSC && !opt_gekko_gsc_detect);
@@ -3959,7 +4018,8 @@ static struct cgpu_info *compac_detect_one(struct libusb_device *dev, struct usb
 		exclude_me |= (info->ident == IDENT_GSE && !opt_gekko_gse_detect);
 		exclude_me |= (info->ident == IDENT_GSH && !opt_gekko_gsh_detect);
 		exclude_me |= (info->ident == IDENT_GSI && !opt_gekko_gsi_detect);
-		exclude_me |= ((info->ident == IDENT_GSF || info->ident == IDENT_GSFM) && !opt_gekko_gsf_detect);
+		exclude_me |= (info->ident == IDENT_GSF && !opt_gekko_gsf_detect);
+		exclude_me |= (info->ident == IDENT_GSFM && !opt_gekko_r909_detect);
 	}
 
 	if (opt_gekko_serial != NULL

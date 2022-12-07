@@ -364,10 +364,12 @@ Options for both config file and command line:
 --gekko-compac-freq <arg> Set GekkoScience Compac BM1384 frequency in MHz, range 6.25-500 (default 150.0)
 --gekko-compacf-detect Detect GekkoScience CompacF BM1397
 --gekko-compacf-freq <arg> Set GekkoScience CompacF BM1397 frequency in MHz, range 100-800 (default 200.0)
---gekko-lowboost    GekkoScience NewPac/R606/CompacF AsicBoost - 2 midstate
+--gekko-r909-detect Detect GekkoScience Terminus R909 BM1397
+--gekko-r909-freq <arg> Set GekkoScience Terminus R909 BM1397 frequency in MHz, range 100-800 (default 450.0)
+--gekko-lowboost    GekkoScience NewPac/R606 AsicBoost - 2 midstate
 --gekko-newpac-detect Detect GekkoScience NewPac BM1387
 --gekko-newpac-freq Set GekkoScience NewPac BM1387 frequency in MHz, range 50-900
---gekko-noboost     Disable GekkoScience NewPac/R606/CompacF AsicBoost
+--gekko-noboost     Disable GekkoScience NewPac/R606/CompacF/R909 AsicBoost
 --gekko-r606-detect Detect GekkoScience Terminus BM1387
 --gekko-r606-freq   Set GekkoScience Terminus R606 frequency in MHz, range 50-900
 --gekko-serial      Detect GekkoScience Device by Serial Number

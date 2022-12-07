@@ -312,6 +312,7 @@ bool opt_gekko_gse_detect = 0;
 bool opt_gekko_gsh_detect = 0;
 bool opt_gekko_gsi_detect = 0;
 bool opt_gekko_gsf_detect = 0;
+bool opt_gekko_r909_detect = 0;
 float opt_gekko_gsc_freq = 150;
 float opt_gekko_gsd_freq = 100;
 float opt_gekko_gse_freq = 150;
@@ -322,6 +323,7 @@ float opt_gekko_step_freq = 6.25;
 int opt_gekko_gsh_freq = 100;
 int opt_gekko_gsi_freq = 550;
 int opt_gekko_gsf_freq = 200;
+int opt_gekko_r909_freq = 450;
 int opt_gekko_bauddiv = 0;
 int opt_gekko_gsh_vcore = 400;
 int opt_gekko_start_freq = 100;
@@ -1944,6 +1946,9 @@ static struct opt_table opt_config_table[] = {
 	OPT_WITHOUT_ARG("--gekko-compacf-detect",
 			 opt_set_bool, &opt_gekko_gsf_detect,
 			 "Detect GekkoScience CompacF BM1397"),
+	OPT_WITHOUT_ARG("--gekko-r909-detect",
+			 opt_set_bool, &opt_gekko_r909_detect,
+			 "Detect GekkoScience Terminus R909 BM1397"),
 	OPT_WITHOUT_ARG("--gekko-noboost",
 			 opt_set_bool, &opt_gekko_noboost,
 			 "Disable GekkoScience NewPac/R606/CompacF AsicBoost"),
@@ -1980,6 +1985,9 @@ static struct opt_table opt_config_table[] = {
 	OPT_WITH_ARG("--gekko-compacf-freq",
 		     set_int_0_to_9999, opt_show_intval, &opt_gekko_gsf_freq,
 		     "Set GekkoScience CompacF BM1397 frequency in MHz, range 100-800"),
+	OPT_WITH_ARG("--gekko-r909-freq",
+		     set_int_0_to_9999, opt_show_intval, &opt_gekko_r909_freq,
+		     "Set GekkoScience Terminus R909 BM1397 frequency in MHz, range 100-800"),
 	OPT_WITH_ARG("--gekko-start-freq",
 		     set_int_0_to_9999, opt_show_intval, &opt_gekko_start_freq,
                      "Ramp start frequency MHz 25-500"),
