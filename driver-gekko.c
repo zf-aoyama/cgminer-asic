@@ -4339,6 +4339,7 @@ static struct api_data *compac_api_stats(struct cgpu_info *compac)
 	cgtime(&now);
 	tps = (double)(info->tasks) / tdiff(&now, &(info->first_task));
 
+	root = api_add_string(root, "Serial", compac->usbdev->serial_string, false);
 	root = api_add_int(root, "Nonces", &info->nonces, false);
 	root = api_add_int(root, "Accepted", &info->accepted, false);
 	root = api_add_double(root, "TasksPerSec", &tps, true);
