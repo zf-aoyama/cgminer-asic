@@ -29,7 +29,7 @@ Accessing the API
 -----------------
 
 To access the API it is easiest to install Java
-	https://www.java.com/
+	https://java.com/
 
 Ensure you have enabled the API e.g.
 	--api-enable --api-allow "W:127.0.0.1"
