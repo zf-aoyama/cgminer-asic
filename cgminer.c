@@ -231,6 +231,7 @@ bool use_curses = true;
 #else
 bool use_curses;
 #endif
+bool opt_mac_yield;
 bool opt_widescreen;
 static bool alt_status;
 static bool switch_status;
@@ -2222,6 +2223,9 @@ static struct opt_table opt_config_table[] = {
 	OPT_WITHOUT_ARG("--lowmem",
 			opt_set_bool, &opt_lowmem,
 			"Minimise caching of shares for low memory applications"),
+	OPT_WITHOUT_ARG("--mac-yield",
+			opt_set_bool, &opt_mac_yield,
+			"Allow yield on old macs (default dont)"),
 #ifdef USE_MINION
 	OPT_WITH_ARG("--minion-chipreport",
 		     set_int_0_to_100, opt_show_intval, &opt_minion_chipreport,

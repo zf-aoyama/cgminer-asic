@@ -3113,7 +3113,8 @@ static void *compac_handle_rx(void *object, int read_bytes, int path)
 		case MINER_MINING:
 			if (!cmd_resp) {
 #ifdef __APPLE__
-				sched_yield();
+				if (opt_mac_yield)
+					sched_yield();
 #else
 				selective_yield();
 #endif
@@ -3871,7 +3872,8 @@ static int64_t compac_scanwork(struct thr_info *thr)
 		return -1;
 
 #ifdef __APPLE__
-	sched_yield();
+	if (opt_mac_yield)
+		sched_yield();
 #else
 	selective_yield();
 #endif

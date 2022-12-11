@@ -1014,6 +1014,7 @@ struct pool;
 #define API_MCAST_CODE "FTW"
 #define API_MCAST_ADDR "224.0.0.75"
 
+extern bool opt_mac_yield;
 extern bool opt_widescreen;
 extern bool opt_work_update;
 extern bool opt_protocol;

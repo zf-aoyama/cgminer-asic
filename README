@@ -394,6 +394,7 @@ Options for both config file and command line:
 --load-balance      Change multipool strategy from failover to quota based balance
 --log|-l <arg>      Interval in seconds between log output (default: 5)
 --lowmem            Minimise caching of shares for low memory applications
+--mac-yield         Allow yield on old macs (default dont)
 --minion-chipreport <arg> Seconds to report chip 5min hashrate, range 0-100 (default: 0=disabled)
 --minion-freq <arg> Set minion chip frequencies in MHz, single value or comma list, range 100-1400 (default: 1200)
 --minion-freqchange Millisecond total time to do frequency changes (default: 1000)
