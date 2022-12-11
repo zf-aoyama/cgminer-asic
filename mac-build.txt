@@ -24,6 +24,10 @@ If you already had brew installed, you should instead do the following steps:
  brew tap kanoi/cgminer
  brew install cgminer
 
+To install minor updates to cgminer, if you already have upgraded everything
+
+ brew reinstall cgminer
+
 
 Accessing the API
 -----------------
