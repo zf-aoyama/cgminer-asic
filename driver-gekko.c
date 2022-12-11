@@ -187,7 +187,10 @@ applog(LOG_ERR, "%s()  [%02x %02x %02x %02x %02x %02x %02x %02x]", __func__,
 	usb_write(compac, (char *)(info->cmd), bytes, &read_bytes, C_REQUESTRESULTS);
 
 	//let the usb frame propagate
-	cgsleep_us(info->usb_prop);
+	if (info->asic_type == BM1397)
+		cgsleep_us(info->usb_prop);
+	else
+		cgsleep_ms(1);
 }
 
 static float limit_freq(struct COMPAC_INFO *info, float freq, bool zero)
@@ -2000,9 +2003,10 @@ static void *compac_mine(void *object)
 				&&  ms_tdiff(&now, &asic->last_nonce) > asic->fullscan_ms * 60)
 				{
 					plateau_type = PT_NONONCE;
-					applog(LOG_INFO, "%d: %s %d plateau_type PT_NONONCE [%u] %d > %.2f",
+					applog(LOG_ERR, "%d: %s %d plateau_type PT_NONONCE [%u] %d > %.2f (lock=%d)",
 						compac->cgminer_id, compac->drv->name, compac->device_id, i,
-						ms_tdiff(&now, &asic->last_nonce), asic->fullscan_ms * 60);
+						ms_tdiff(&now, &asic->last_nonce), asic->fullscan_ms * 60,
+						info->lock_freq);
 
 					// no nonces -> unlock
 					if (info->lock_freq)
@@ -2386,7 +2390,7 @@ static void *compac_mine(void *object)
 		}
 
 		//let the usb frame propagate
-		cgsleep_us(info->usb_prop);
+		cgsleep_ms(1);
 
 		info->task_ms = (info->task_ms * 9 + ms_tdiff(&now, &info->last_task)) / 10;
 		cgtime(&info->last_task);
@@ -2584,9 +2588,10 @@ static void *compac_mine2(void *object)
 						&&  ms_tdiff(&now, &info->last_nonce) > info->fullscan_ms * 60 * info->difficulty)
 						{
 							plateau_type = PT_NONONCE;
-							applog(LOG_INFO, "%d: %s %d - plateau_type PT_NONONCE [%u] %d > %.2f",
+							applog(LOG_ERR, "%d: %s %d - plateau_type PT_NONONCE [%u] %d > %.2f (lock=%d)",
 								compac->cgminer_id, compac->drv->name, compac->device_id, i,
-								ms_tdiff(&now, &info->last_nonce), info->fullscan_ms * 60 * info->difficulty);
+								ms_tdiff(&now, &info->last_nonce),
+								info->fullscan_ms * 60 * info->difficulty, info->lock_freq);
 							if (info->lock_freq)
 								info->lock_freq = false;
 						}
@@ -2851,7 +2856,8 @@ static void *compac_mine2(void *object)
 					{
 						asic->frequency_updated = 0;
 						info->frequency_of = i;
-						//ping_freq(compac, i);
+						if (info->asic_type != BM1397)
+							ping_freq(compac, i);
 						break;
 					}
 				}
@@ -2973,7 +2979,10 @@ applog(LOG_ERR, " [%02x %02x %02x %02x %02x %02x %02x %02x]",
 		}
 
 		//let the usb frame propagate
-		cgsleep_us(info->usb_prop);
+		if (info->asic_type == BM1397)
+			cgsleep_us(info->usb_prop);
+		else
+			cgsleep_ms(1);
 
 //		if (info->asic_type == BM1397 && work)
 //		{
@@ -3687,80 +3696,81 @@ static bool compac_init(struct thr_info *thr)
 	info->hr_scale = 1.0;
 	info->usb_prop = 1000;
 
-	switch (info->ident) {
-		case IDENT_BSC:
-		case IDENT_GSC:
-			info->frequency_requested = limit_freq(info, opt_gekko_gsc_freq, false);
-			info->frequency_start = limit_freq(info, opt_gekko_start_freq, false);
-			break;
-		case IDENT_BSD:
-		case IDENT_GSD:
-			info->frequency_requested = limit_freq(info, opt_gekko_gsd_freq, false);
-			info->frequency_start = limit_freq(info, opt_gekko_start_freq, false);
-			break;
-		case IDENT_BSE:
-		case IDENT_GSE:
-			info->frequency_requested = limit_freq(info, opt_gekko_gse_freq, false);
-			info->frequency_start = limit_freq(info, opt_gekko_start_freq, false);
-			break;
-		case IDENT_GSH:
-			info->frequency_requested = limit_freq(info, opt_gekko_gsh_freq, false);
-			info->frequency_start = limit_freq(info, opt_gekko_start_freq, false);
-			break;
-		case IDENT_GSI:
-			info->frequency_requested = limit_freq(info, opt_gekko_gsi_freq, false);
-			info->frequency_start = limit_freq(info, opt_gekko_start_freq, false);
-			// default to 550
-			if (info->frequency_start == 100)
-				info->frequency_start = 550;
-			if (info->frequency_start < 100)
-				info->frequency_start = 100;
-			// due to higher freq allow longer
-			info->ramp_time = MS_MINUTE_4;
-			break;
-		case IDENT_GSF:
-		case IDENT_GSFM:
-			if (info->ident == IDENT_GSF)
-				info->frequency_requested = limit_freq(info, opt_gekko_gsf_freq, false);
-			else
-				info->frequency_requested = limit_freq(info, opt_gekko_r909_freq, false);
+	switch (info->ident)
+	{
+	 case IDENT_BSC:
+	 case IDENT_GSC:
+		info->frequency_requested = limit_freq(info, opt_gekko_gsc_freq, false);
+		info->frequency_start = limit_freq(info, opt_gekko_start_freq, false);
+		break;
+	 case IDENT_BSD:
+	 case IDENT_GSD:
+		info->frequency_requested = limit_freq(info, opt_gekko_gsd_freq, false);
+		info->frequency_start = limit_freq(info, opt_gekko_start_freq, false);
+		break;
+	 case IDENT_BSE:
+	 case IDENT_GSE:
+		info->frequency_requested = limit_freq(info, opt_gekko_gse_freq, false);
+		info->frequency_start = limit_freq(info, opt_gekko_start_freq, false);
+		break;
+	 case IDENT_GSH:
+		info->frequency_requested = limit_freq(info, opt_gekko_gsh_freq, false);
+		info->frequency_start = limit_freq(info, opt_gekko_start_freq, false);
+		break;
+	 case IDENT_GSI:
+		info->frequency_requested = limit_freq(info, opt_gekko_gsi_freq, false);
+		info->frequency_start = limit_freq(info, opt_gekko_start_freq, false);
+		// default to 550
+		if (info->frequency_start == 100)
+			info->frequency_start = 550;
+		if (info->frequency_start < 100)
+			info->frequency_start = 100;
+		// due to higher freq allow longer
+		info->ramp_time = MS_MINUTE_4;
+		break;
+	 case IDENT_GSF:
+	 case IDENT_GSFM:
+		if (info->ident == IDENT_GSF)
+			info->frequency_requested = limit_freq(info, opt_gekko_gsf_freq, false);
+		else
+			info->frequency_requested = limit_freq(info, opt_gekko_r909_freq, false);
 
-			info->frequency_start = limit_freq(info, opt_gekko_start_freq, false);
-			if (info->frequency_start < 100)
-				info->frequency_start = 100;
-			if (info->frequency_start == 100)
+		info->frequency_start = limit_freq(info, opt_gekko_start_freq, false);
+		if (info->frequency_start < 100)
+			info->frequency_start = 100;
+		if (info->frequency_start == 100)
+		{
+			if (info->ident == IDENT_GSF)
 			{
-				if (info->ident == IDENT_GSF)
-				{
-					// default to 200
-					info->frequency_start = 200;
-				}
-				else // (info->ident == IDENT_GSFM)
-				{
-					// default to 400
-					info->frequency_start = 400;
-				}
+				// default to 200
+				info->frequency_start = 200;
 			}
-			// ensure request is >= start
-			if (info->frequency_requested < info->frequency_start)
-				info->frequency_requested = info->frequency_start;
-			// correct the defaults:
-			info->freq_base = info->freq_mult / 5.0;
-			step_freq = opt_gekko_step_freq;
-			if (step_freq == 6.25)
-				step_freq = 5.0;
-			info->step_freq = FREQ_BASE(step_freq);
-			// chips can get lower than the calculated 67.2 at lower freq
-			info->hr_scale = 52.5 / 67.2;
-			// due to ticket mask allow longer
-			info->ramp_time = MS_MINUTE_5;
-			// force mine2 for all BM1397
-			opt_gekko_mine2 = true;
-			break;
-		default:
-			info->frequency_requested = 200;
-			info->frequency_start = info->frequency_requested;
-			break;
+			else // (info->ident == IDENT_GSFM)
+			{
+				// default to 400
+				info->frequency_start = 400;
+			}
+		}
+		// ensure request is >= start
+		if (info->frequency_requested < info->frequency_start)
+			info->frequency_requested = info->frequency_start;
+		// correct the defaults:
+		info->freq_base = info->freq_mult / 5.0;
+		step_freq = opt_gekko_step_freq;
+		if (step_freq == 6.25)
+			step_freq = 5.0;
+		info->step_freq = FREQ_BASE(step_freq);
+		// chips can get lower than the calculated 67.2 at lower freq
+		info->hr_scale = 52.5 / 67.2;
+		// due to ticket mask allow longer
+		info->ramp_time = MS_MINUTE_5;
+		// force mine2 for all BM1397
+		opt_gekko_mine2 = true;
+		break;
+	 default:
+		info->frequency_requested = 200;
+		info->frequency_start = info->frequency_requested;
+		break;
 	}
 	if (info->frequency_start > info->frequency_requested) {
 		info->frequency_start = info->frequency_requested;
@@ -4461,7 +4471,8 @@ static struct api_data *compac_api_stats(struct cgpu_info *compac)
 	root = api_add_uint(root, "Dups", &info->dups, true);
 	root = api_add_uint(root, "Chips", &info->chips, false);
 	root = api_add_bool(root, "FreqLocked", &info->lock_freq, false);
-	root = api_add_int(root, "USBProp", &info->usb_prop, false);
+	if (info->asic_type == BM1397)
+		root = api_add_int(root, "USBProp", &info->usb_prop, false);
 	for (i = 0; i < (int)info->chips; i++)
 	{
 		struct ASIC_INFO *asic = &info->asics[i];
@@ -4567,8 +4578,17 @@ static char *compac_api_set(struct cgpu_info *compac, char *option, char *settin
 	{
 		// freq: all of the drivers automatically fix the value
 		//	BM1397 0 is a special case, since it 'works'
-		snprintf(replybuf, siz, "reset freq: 0-1200 chip: N:0-800 target: 0-1200"
-					" lockfreq unlockfreq waitfactor: 0.01-2.0 usbprop: 10-1000");
+		if (info->asic_type == BM1397)
+		{
+			snprintf(replybuf, siz, "reset freq: 0-1200 chip: N:0-800 target: 0-1200"
+						" lockfreq unlockfreq waitfactor: 0.01-2.0"
+						" usbprop: 10-1000");
+		}
+		else
+		{
+			snprintf(replybuf, siz, "reset freq: 0-1200 chip: N:0-800 target: 0-1200"
+						" lockfreq unlockfreq waitfactor: 0.01-2.0");
+		}
                 return replybuf;
 	}
 
@@ -4685,6 +4705,12 @@ static char *compac_api_set(struct cgpu_info *compac, char *option, char *settin
 	// set work propagation time
 	if (strcasecmp(option, "usbprop") == 0)
 	{
+		if (info->asic_type != BM1397)
+		{
+			snprintf(replybuf, siz, "usbprop only for BM1397");
+			return replybuf;
+		}
+
 		if (!setting || !*setting)
 		{
 			snprintf(replybuf, siz, "missing usec");
