@@ -2602,13 +2602,12 @@ static void *compac_mine2(void *object)
 						&&  ms_tdiff(&now, &asic->last_nonce) > asic->fullscan_ms * 60)
 						{
 							plateau_type = PT_NONONCE;
-							applog(LOG_INFO, "%d: %s %d - plateau_type PT_NONONCE [%u] %d > %.2f",
+							applog(LOG_ERR, "%d: %s %d - plateau_type PT_NONONCE [%u] %d > %.2f (lock=%d)",
 								compac->cgminer_id, compac->drv->name, compac->device_id, i,
-								ms_tdiff(&now, &asic->last_nonce), asic->fullscan_ms * 60);
+								ms_tdiff(&now, &asic->last_nonce), asic->fullscan_ms * 60,
+								info->lock_freq);
 							if (info->lock_freq)
 								info->lock_freq = false;
-							// this is critical - reset it
-							break;
 						}
 					}
 

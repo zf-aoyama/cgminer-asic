@@ -37,3 +37,9 @@ Ensure you have enabled the API e.g.
 Then in a terminal after installing and running cgminer:
 	cd Library/Caches/Homebrew/cgminer--git/
 	java API estats
+
+Older macs
+----------
+
+If you are running an older mac without proper multitasking,
+you may need to add the option --mac-yield when running cgminer with a gekko miner
