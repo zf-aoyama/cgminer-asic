@@ -217,6 +217,10 @@ static float limit_freq(struct COMPAC_INFO *info, float freq, bool zero)
 		else
 			freq = fbound(freq, 100, 800);
 		break;
+	 default:
+		// 'should' never happen ...
+		freq = fbound(freq, 100, 300);
+		break;
 	}
 	return freq;
 }
@@ -751,7 +755,7 @@ static void calc_gsf_freq(struct cgpu_info *compac, float frequency, int chip)
 		doall = true;
 	else
 	{
-		if (chip < 0 || chip >= info->chips)
+		if (chip < 0 || chip >= (int)(info->chips))
 		{
 			applog(LOG_ERR, "%d: %s %d - invalid set chip [%d] -> freq %.2fMHz",
 				compac->cgminer_id, compac->drv->name, compac->device_id, chip, frequency);
@@ -1342,7 +1346,7 @@ static void compac_gsf_nonce(struct cgpu_info *compac, K_ITEM *item)
 
 	int asic_id = floor((double)(rx[4]) / ((double)0x100 / (double)(info->chips)));
 
-	if (asic_id >= info->chips)
+	if (asic_id >= (int)(info->chips))
         {
 		applog(LOG_ERR, "%d: %s %d - nonce %08x @ %02x rx[4] %02x invalid asic_id (0..%d)",
 			compac->cgminer_id, compac->drv->name, compac->device_id, nonce, job_id,
@@ -1371,6 +1375,8 @@ else
 #ifndef WIN32
 		mutex_lock(&info->lock);
 		info->dups++;
+		info->dupsall++;
+		info->dupsreset++;
 		asic->dups++;
 		cgtime(&info->last_dup_time);
 		if (info->dups == 1)
@@ -1660,6 +1666,8 @@ static uint64_t compac_check_nonce(struct cgpu_info *compac)
 			info->rx[0], info->rx[1], info->rx[2], info->rx[3], info->rx[4], info->rx[5]);
 #ifndef WIN32
 		info->dups++;
+		info->dupsall++;
+		info->dupsreset++;
 		asic->dups++;
 		cgtime(&info->last_dup_time);
 		if (info->dups == 1) {
@@ -3175,10 +3183,10 @@ static bool gsf_reply(struct COMPAC_INFO *info, unsigned char *rx, int len, stru
 {
 	bool used = false;
 
-	if (len == info->rx_len && rx[7] == BM1397FREQ)
+	if (len == (int)(info->rx_len) && rx[7] == BM1397FREQ)
 	{
 		int chip = TOCHIPPY1397(info, rx[6]);
-		if (chip >= 0 && chip < info->chips)
+		if (chip >= 0 && chip < (int)(info->chips))
 		{
 			struct ASIC_INFO *asic = &info->asics[chip];
 			asic->frequency_reply = info->freq_mult * rx[3] / rx[4]
@@ -3222,7 +3230,7 @@ static void *compac_listen2(struct cgpu_info *compac, struct COMPAC_INFO *info)
 		cgtime(&now);
 
 		// all replies should be info->rx_len
-		while (read_bytes > 0 && pos >= info->rx_len)
+		while (read_bytes > 0 && pos >= (int)(info->rx_len))
 		{
 #if 0
 applog(LOG_ERR, "%d: %s %d - READ %3d pos %3d state %2d first 16: [%02x %02x %02x %02x %02x %02x %02x %02x]",
@@ -3263,7 +3271,7 @@ applog(LOG_ERR, " %s %d dump before %d=0xaa [%02x %02x %02x %02x ...]",
 				memmove(rx, rx+i, pos-i);
 				pos -= i;
 
-				if (pos < info->rx_len)
+				if (pos < (int)(info->rx_len))
 					continue;
 			}
 
@@ -3281,7 +3289,7 @@ applog(LOG_ERR, " %s %d dump before %d=0xaa [%02x %02x %02x %02x ...]",
 				len--;
 
 			// try it as a nonce
-			if (len != info->rx_len)
+			if (len != (int)(info->rx_len))
 				len = info->rx_len;
 
 #if 0
@@ -3337,7 +3345,7 @@ applog(LOG_ERR, " %s %d dump before %d=0xaa [%02x %02x %02x %02x ...]",
 						mutex_unlock(&static_lock);
 
 						// don't discard the data
-						if (len == info->rx_len && okcrc)
+						if (len == (int)(info->rx_len) && okcrc)
 							gsf_reply(info, rx, info->rx_len, &now);
 					}
 					else
@@ -3346,7 +3354,7 @@ applog(LOG_ERR, " %s %d dump before %d=0xaa [%02x %02x %02x %02x ...]",
 				break;
 			 case MINER_MINING:
 				used = false;
-				if (len == info->rx_len && okcrc)
+				if (len == (int)(info->rx_len) && okcrc)
 				{
 					used = gsf_reply(info, rx, info->rx_len, &now);
 #if 0
@@ -3385,7 +3393,7 @@ applog(LOG_ERR, " [%02x %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x]"
 				break;
 			 default:
 				used = false;
-				if (len == info->rx_len && okcrc)
+				if (len == (int)(info->rx_len) && okcrc)
 					used = gsf_reply(info, rx, info->rx_len, &now);
 #if 0
 if (!used)
@@ -3958,6 +3966,7 @@ static int64_t compac_scanwork(struct thr_info *thr)
 			compac_prepare(thr);
 
 			info->fail_count++;
+			info->dupsreset = 0;
 			info->mining_state = MINER_INIT;
 			cgtime(&info->last_reset);
 			// in case clock jumps back ...
@@ -4469,7 +4478,8 @@ static struct api_data *compac_api_stats(struct cgpu_info *compac)
 	root = api_add_float(root, "FreqStart", &info->frequency_start, false);
 	root = api_add_float(root, "FreqSel", &info->frequency_selected, false);
 	//root = api_add_temp(root, "Temp", &info->micro_temp, false);
-	root = api_add_uint(root, "Dups", &info->dups, true);
+	root = api_add_int(root, "Dups", &info->dupsall, true);
+	root = api_add_int(root, "DupsReset", &info->dupsreset, true);
 	root = api_add_uint(root, "Chips", &info->chips, false);
 	root = api_add_bool(root, "FreqLocked", &info->lock_freq, false);
 	if (info->asic_type == BM1397)
@@ -4644,7 +4654,7 @@ static char *compac_api_set(struct cgpu_info *compac, char *option, char *settin
 
 		// atoi will stop at the ':'
 		chip = atoi(setting);
-		if (chip < 0 || chip >= info->chips)
+		if (chip < 0 || chip >= (int)(info->chips))
 		{
 			snprintf(replybuf, siz, "invalid chip %d", chip);
 			return replybuf;

@@ -301,7 +301,9 @@ struct COMPAC_INFO {
 	int frequency_fo;            // Frequency check token
 	int frequency_of;            // Frequency check token
 	int accepted;                // Nonces accepted
-	int dups;                    // Duplicates found
+	int dups;                    // Duplicates found (for plateau code)
+	int dupsall;                 // Duplicate nonce counter (total)
+	int dupsreset;		     // Duplicates since reset
 	int tracker;                 // Track code execution path
 	int interface;               // USB interface
 	int init_count;              // USB interface initialization counter
