@@ -3181,6 +3181,7 @@ static void *compac_gsf_nonce_que(void *object)
 
 static bool gsf_reply(struct COMPAC_INFO *info, unsigned char *rx, int len, struct timeval *now)
 {
+	unsigned char fa, fb, fc1, fc2;
 	bool used = false;
 
 	if (len == (int)(info->rx_len) && rx[7] == BM1397FREQ)
@@ -3189,11 +3190,20 @@ static bool gsf_reply(struct COMPAC_INFO *info, unsigned char *rx, int len, stru
 		if (chip >= 0 && chip < (int)(info->chips))
 		{
 			struct ASIC_INFO *asic = &info->asics[chip];
-			asic->frequency_reply = info->freq_mult * rx[3] / rx[4]
-					/ ((rx[5] & 0xf0) >> 4) / (rx[5] & 0x0f);
-			asic->last_frequency_reply.tv_sec = now->tv_sec;
-			asic->last_frequency_reply.tv_usec = now->tv_usec;
-			used = true;
+
+			fa = rx[3];
+			fb = rx[4];
+			fc1 = (rx[5] & 0xf0) >> 4;
+			fc2 = rx[5] & 0x0f;
+
+			// only allow a valid reply
+			if (fa > 0 && fb > 0 && fc1 > 0 && fc2 > 0)
+			{
+				asic->frequency_reply = info->freq_mult * fa / fb / fc1 / fc2;
+				asic->last_frequency_reply.tv_sec = now->tv_sec;
+				asic->last_frequency_reply.tv_usec = now->tv_usec;
+				used = true;
+			}
 		}
 	}
 
