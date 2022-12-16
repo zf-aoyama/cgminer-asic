@@ -4531,13 +4531,17 @@ static struct api_data *compac_api_stats(struct cgpu_info *compac)
 	struct api_data *root = NULL;
 	struct timeval now;
 	char nambuf[64], rangebuf[64], buf256[256];
-	double tps, ghs, off;
+	double taskdiff, tps, ghs, off;
 	time_t secs;
 	size_t len;
 	int i, j, k;
 
 	cgtime(&now);
-	tps = (double)(info->tasks) / tdiff(&now, &(info->first_task));
+	taskdiff = tdiff(&now, &(info->first_task));
+	if (taskdiff == 0 || info->tasks < 2)
+		tps = 0;
+	else
+		tps = (double)(info->tasks - 1) / taskdiff;
 
 	root = api_add_string(root, "Serial", compac->usbdev->serial_string, false);
 	root = api_add_int(root, "Nonces", &info->nonces, false);
