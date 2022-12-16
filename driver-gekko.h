@@ -85,6 +85,35 @@ enum asic_state {
 	ASIC_DEAD
 };
 
+// N.B. at 2TH/s R909 ticket 64 = ~1.2 nonces per chip per second
+//  thus 20mins is only ~1000 nonces - so variance isn't very low
+// time range of each value = 10 minutes
+#define CHTIME 600
+// number of ranges thus total 1hr
+#define CHNUM 6
+
+#define CHOFF(n) (((n) + CHNUM) % CHNUM)
+
+// N.B. uses CLOCK_MONOTONIC
+#define CHBASE(_t1) ((int)((_t1) / CHTIME))
+
+#define CHCMP(_t1, _t2) (CHBASE(_t1) == CHBASE(_t2))
+
+struct GEKKOCHIP
+{
+	// seconds time of [offset]
+	time_t zerosec;
+	// the position of [0]
+	int offset;
+	// number of nonces in each range
+	int noncenum[CHNUM];
+	// number of nonces in 0..last-1
+	int noncesum;
+	// last used offset 0 based
+	int last;
+};
+
+
 struct ASIC_INFO {
 	struct timeval last_nonce;              // Last time nonce was found
 	float frequency;                        // Current frequency
@@ -92,6 +121,7 @@ struct ASIC_INFO {
 	bool frequency_updated;                 // Initiate check for new frequency
 	uint32_t frequency_attempt;             // attempts of set_frequency
 	uint32_t dups;                          // Duplicate nonce counter
+	uint32_t dupsall;			// Total duplicate nonce counter
 	enum asic_state state;
 	enum asic_state last_state;
 	struct timeval state_change_time;       // Device startup time
@@ -105,6 +135,7 @@ struct ASIC_INFO {
 	float frequency_reply;
 	
 	int nonces;
+	struct GEKKOCHIP gc;	// running nonce buffer
 };
 
 struct COMPAC_NONCE
@@ -206,6 +237,7 @@ struct GEKKOHASH
 #define JOBLIMn 3
 
 // the arrays are minutes of data
+// N.B. uses CLOCK_MONOTONIC
 #define JOBTIME(_sec) ((int)((int)(_sec)/(int)60))
 
 struct GEKKOJOB
@@ -382,7 +414,9 @@ struct COMPAC_INFO {
 	bool ticket_got_low;			// nonce found close to but >= diff
 	int ticket_failures;			// Must not exceed MAX_TICKET_CHECK
 	struct ASIC_INFO asics[255];
-	int64_t noncebyte[256];
+	int64_t noncebyte[256];			// Count of nonces with the given byte[3] value
+	bool nb2c_setup;			// BM1397 true = nb2chip is setup (false = all 0)
+	uint16_t nb2chip[256];			// BM1397 map nonce byte to: chip that produced it
 	bool active_work[JOB_MAX+1];            // Tag good and stale work
 	struct work *work[JOB_MAX+1];           // Work ring buffer
 

@@ -258,21 +258,137 @@ static void ping_freq(struct cgpu_info *compac, int asic)
 	}
 }
 
-// update info->gh offset as at 'now' and correct values
+static void gsf_calc_nb2c(struct cgpu_info *compac)
+{
+	struct COMPAC_INFO *info = compac->device_data;
+	int c, i, j;
+	double fac;
+
+	if (info->chips == 1)
+	{
+		// default all 0 is correct
+		info->nb2c_setup = true;
+	}
+	else if (info->chips == 6)
+	{
+		// groups of 4
+		fac = CHIPPY1397(info, 1) / 4.0;
+		for (i = 0; i < 256; i += 64)
+		{
+			for (j = 0; j < 64; j++)
+			{
+				c = (int)((double)j / fac);
+				if (c >= info->chips)
+					c = info->chips - 1;
+				info->nb2chip[i + j] = c;
+			}
+		}
+		info->nb2c_setup = true;
+	}
+}
+
+static void gc_wipe(struct GEKKOCHIP *gc, struct timeval *now)
+{
+	// clear out everything
+	gc->zerosec = now->tv_sec;
+	gc->offset = 0;
+	memset(gc->noncenum, 0, sizeof(gc->noncenum));
+	gc->noncesum = 0;
+	gc->last = 0;
+}
+
+static void gc_wipe_all(struct COMPAC_INFO *info, struct timeval *now, bool locked)
+{
+	struct GEKKOCHIP *gc;
+	int i;
+
+	if (!locked)
+		mutex_lock(&info->ghlock);
+
+	for (i = 0; i < info->chips; i++)
+		gc_wipe(&(info->asics[i].gc), now);
+
+	if (!locked)
+		mutex_unlock(&info->ghlock);
+}
+
+// update asic->gc offset as at 'now' and correct values
 // info must be locked, wipe creates a new data set
+static void gc_offset(struct COMPAC_INFO *info, struct ASIC_INFO *asic, struct timeval *now, bool wipe, bool locked)
+{
+	struct GEKKOCHIP *gc = &(asic->gc);
+	time_t delta;
+
+	if (!locked)
+		mutex_lock(&info->ghlock);
+
+	// wipe or delta != 0
+	if (wipe || !CHCMP(gc->zerosec, now->tv_sec))
+	{
+		// clear some/all delta data
+
+		delta = CHBASE(now->tv_sec) - CHBASE(gc->zerosec);
+		// if time goes back, also reset everything
+		//  a forward jump of CHNUM will reset the whole buffer
+		if (wipe || delta < 0 || delta >= CHNUM)
+			gc_wipe(gc, now);
+		else
+		{
+			// delta is > 0, but usually always 1 unless,
+			//  due to asic failure, a 10 minutes had no nonces
+			// however the loop will total 1 iteration each
+			//  10 minutes elapsed real time e.g. if not called
+			//  for 30 minutes, it will loop 3 times
+			// there is also a CHNUM-1 limit on that
+
+			gc->zerosec = now->tv_sec;
+			// clear out the old values
+			do
+			{
+				gc->offset = CHOFF(gc->offset+1);
+
+				gc->noncesum -= gc->noncenum[CHOFF(gc->offset)];
+				gc->noncenum[CHOFF(gc->offset)] = 0;
+
+				if (gc->last < (CHNUM-1))
+					gc->last++;
+			}
+			while (--delta > 0);
+		}
+	}
+
+	// if there's been no nonces up to now, history must already be all zero
+	//  so just remove history
+	if (gc->noncesum == 0 && gc->last > 0)
+		gc->last = 0;
+
+	if (!locked)
+		mutex_unlock(&info->ghlock);
+}
+
+// update info->gh offset as at 'now' and correct values
+// info must be locked, wipe creates a new data set and also wipes all asic->gc
 static void gh_offset(struct COMPAC_INFO *info, struct timeval *now, bool wipe, bool locked)
 {
 	struct GEKKOHASH *gh = &(info->gh);
 	time_t delta;
+	int i;
 
 	if (!locked)
 		mutex_lock(&info->ghlock);
 
 	// first time in, wipe is ignored (it's already all zero)
 	if (gh->zerosec == 0)
+	{
 		gh->zerosec = now->tv_sec;
+		for (i = 0; i < info->chips; i++)
+			info->asics[i].gc.zerosec = now->tv_sec;
+	}
 	else
 	{
+		if (wipe)
+			gc_wipe_all(info, now, true);
+
 		// wipe or delta != 0
 		if (wipe || gh->zerosec != now->tv_sec)
 		{
@@ -346,13 +462,13 @@ static void gh_offset(struct COMPAC_INFO *info, struct timeval *now, bool wipe, 
 
 // update info->gh with a new nonce as at 'now' (diff=info->difficulty)
 // info must be locked, wipe creates a new data set with the single nonce
-static void add_gekko_nonce(struct COMPAC_INFO *info, struct timeval *now, bool wipe)
+static void add_gekko_nonce(struct COMPAC_INFO *info, struct ASIC_INFO *asic, struct timeval *now)
 {
 	struct GEKKOHASH *gh = &(info->gh);
 
 	mutex_lock(&info->ghlock);
 
-	gh_offset(info, now, wipe, true);
+	gh_offset(info, now, false, true);
 
 	if (gh->diff[gh->offset] == 0)
 	{
@@ -367,6 +483,15 @@ static void add_gekko_nonce(struct COMPAC_INFO *info, struct timeval *now, bool 
 	gh->diffsum += info->difficulty;
 	(gh->noncenum[gh->offset])++;
 	(gh->noncesum)++;
+
+	if (asic != NULL)
+	{
+		struct GEKKOCHIP *gc = &(asic->gc);
+
+		gc_offset(info, asic, now, false, true);
+		(gc->noncenum[gc->offset])++;
+		(gc->noncesum)++;
+	}
 
 	mutex_unlock(&info->ghlock);
 }
@@ -732,13 +857,36 @@ static void set_ticket(struct cgpu_info *compac, float diff, bool force, bool lo
 
 	if (opt_gekko_mine2)
 	{
-		// wipe info->gh
+		// wipe info->gh/asic->gc
 		cgtime(&now);
 		gh_offset(info, &now, true, false);
 		job_offset(info, &now, true, false);
 		// reset P:
 		info->frequency_computed = 0;
 	}
+}
+
+// expected nonces for GEKKOCHIP - MUST already be locked AND gc_offset()
+// full 50 mins + current offset in 10 mins - N.B. uses CLOCK_MONOTONIC
+// it will grow from 0% to ~100% between 50 & 60 mins if the chip
+//  is performing at 100% - random variance of course also applies
+static double noncepercent(struct COMPAC_INFO *info, int chip, struct timeval *now)
+{
+	double sec, hashpersec, noncepersec, nonceexpect;
+
+	if (info->asic_type != BM1397)
+		return 0.0;
+
+	sec = CHTIME * (CHNUM-1) + (now->tv_sec % CHTIME) + ((double)now->tv_usec / 1000000.0);
+
+	hashpersec = info->asics[chip].frequency * info->cores * info->hr_scale * 1000000.0;
+
+	noncepersec = (hashpersec / (double)0xffffffffull)
+			/ (double)(ticket_1397[info->ticket_number].diff);
+
+	nonceexpect = noncepersec * sec;
+
+	return 100.0 * (double)(info->asics[chip].gc.noncesum) / nonceexpect;
 }
 
 // GSF/GSFM any chip count
@@ -1159,7 +1307,7 @@ static void compac_set_frequency_single(struct cgpu_info *compac, float frequenc
 
 		if (opt_gekko_mine2)
 		{
-			// wipe info->gh
+			// wipe info->gh/asic->gc
 			cgtime(&now);
 			gh_offset(info, &now, true, false);
 			// reset P:
@@ -1247,7 +1395,7 @@ static void compac_set_frequency(struct cgpu_info *compac, float frequency)
 
 	if (opt_gekko_mine2)
 	{
-		// wipe info->gh
+		// wipe info->gh/asic->gc
 		cgtime(&now);
 		gh_offset(info, &now, true, false);
 		// reset P:
@@ -1328,7 +1476,7 @@ static void compac_gsf_nonce(struct cgpu_info *compac, K_ITEM *item)
 	int domid, midnum = 0;
 	double diff = 0.0;
 	bool boost, ok;
-	int i;
+	int asic_id, i;
 
 	if (info->asic_type != BM1397)
 		return;
@@ -1344,7 +1492,10 @@ static void compac_gsf_nonce(struct cgpu_info *compac, K_ITEM *item)
 	info->noncebyte[rx[3]]++;
 	mutex_unlock(&info->lock);
 
-	int asic_id = floor((double)(rx[4]) / ((double)0x100 / (double)(info->chips)));
+	if (info->nb2c_setup)
+		asic_id = info->nb2chip[rx[3]];
+	else
+		asic_id = floor((double)(rx[4]) / ((double)0x100 / (double)(info->chips)));
 
 	if (asic_id >= (int)(info->chips))
         {
@@ -1365,7 +1516,6 @@ else
 #endif
 
 	struct ASIC_INFO *asic = &info->asics[asic_id];
-	asic->nonces++; // info only
 
 	if (nonce == asic->prev_nonce)
 	{
@@ -1378,6 +1528,7 @@ else
 		info->dupsall++;
 		info->dupsreset++;
 		asic->dups++;
+		asic->dupsall++;
 		cgtime(&info->last_dup_time);
 		if (info->dups == 1)
 			info->mining_state = MINER_MINING_DUPS;
@@ -1576,8 +1727,12 @@ else
 	if (active_work && work && submit_nonce(info->thr, work, nonce))
 	{
 		mutex_lock(&info->lock);
+
 		cgtime(&info->last_nonce);
 		cgtime(&asic->last_nonce);
+
+		// count of valid nonces
+		asic->nonces++; // info only
 
 		if (midnum > 0)
 		{
@@ -1594,8 +1749,14 @@ else
 		info->dups = 0;
 		asic->dups = 0;
 		mutex_unlock(&info->lock);
+
 		if (opt_gekko_mine2)
-			add_gekko_nonce(info, &(DATA_NONCE(item)->when), false);
+		{
+			if (info->nb2c_setup)
+				add_gekko_nonce(info, asic, &(DATA_NONCE(item)->when));
+			else
+				add_gekko_nonce(info, NULL, &(DATA_NONCE(item)->when));
+		}
 	}
 	else
 	{
@@ -1658,7 +1819,6 @@ static uint64_t compac_check_nonce(struct cgpu_info *compac)
 
 	int asic_id = (int)floor((double)(info->rx[0]) / ((double)0x100 / (double)(info->chips)));
 	struct ASIC_INFO *asic = &info->asics[asic_id];
-	asic->nonces++; // info only
 
 	if (nonce == asic->prev_nonce) {
 		applog(LOG_INFO, "%d: %s %d - Duplicate Nonce : %08x @ %02x [%02x %02x %02x %02x %02x %02x]",
@@ -1669,6 +1829,7 @@ static uint64_t compac_check_nonce(struct cgpu_info *compac)
 		info->dupsall++;
 		info->dupsreset++;
 		asic->dups++;
+		asic->dupsall++;
 		cgtime(&info->last_dup_time);
 		if (info->dups == 1) {
 			info->mining_state = MINER_MINING_DUPS;
@@ -1729,6 +1890,9 @@ static uint64_t compac_check_nonce(struct cgpu_info *compac)
 		cgtime(&info->last_nonce);
 		cgtime(&asic->last_nonce);
 
+		// count of valid nonces
+		asic->nonces++; // info only
+
 		if (midnum > 0) {
 			applog(LOG_INFO, "%d: %s %d - AsicBoost nonce found : midstate%d",
 				compac->cgminer_id, compac->drv->name, compac->device_id, midnum);
@@ -1743,7 +1907,7 @@ static uint64_t compac_check_nonce(struct cgpu_info *compac)
 		asic->dups = 0;
 
 		if (opt_gekko_mine2)
-			add_gekko_nonce(info, &now, false);
+			add_gekko_nonce(info, asic, &now);
 	} else {
 		if (hwe != compac->hw_errors) {
 			cgtime(&info->last_hwerror);
@@ -3778,8 +3942,12 @@ static bool compac_init(struct thr_info *thr)
 		if (step_freq == 6.25)
 			step_freq = 5.0;
 		info->step_freq = FREQ_BASE(step_freq);
-		// chips can get lower than the calculated 67.2 at lower freq
-		info->hr_scale = 52.5 / 67.2;
+		// IDENT_GSFM runs at the more reliable higher frequencies
+		if (info->ident == IDENT_GSF)
+		{
+			// chips can get lower than the calculated 67.2 at lower freq
+			info->hr_scale = 52.5 / 67.2;
+		}
 		// due to ticket mask allow longer
 		info->ramp_time = MS_MINUTE_5;
 		// force mine2 for all BM1397
@@ -3950,6 +4118,8 @@ static int64_t compac_scanwork(struct thr_info *thr)
 			break;
 		case MINER_OPEN_CORE_OK:
 			applog(LOG_INFO, "%d: %s %d - start work", compac->cgminer_id, compac->drv->name, compac->device_id);
+			if (info->asic_type == BM1397)
+				gsf_calc_nb2c(compac);
 			cgtime(&info->start_time);
 			cgtime(&info->monitor_time);
 			cgtime(&info->last_frequency_adjust);
@@ -3984,7 +4154,7 @@ static int64_t compac_scanwork(struct thr_info *thr)
 
 			if (opt_gekko_mine2)
 			{
-				// wipe info->gh
+				// wipe info->gh/asic->gc
 				gh_offset(info, &now, true, false);
 				// wipe info->job
 				job_offset(info, &now, true, false);
@@ -4364,7 +4534,7 @@ static struct api_data *compac_api_stats(struct cgpu_info *compac)
 	double tps, ghs, off;
 	time_t secs;
 	size_t len;
-	int i, j, k, l;
+	int i, j, k;
 
 	cgtime(&now);
 	tps = (double)(info->tasks) / tdiff(&now, &(info->first_task));
@@ -4494,20 +4664,48 @@ static struct api_data *compac_api_stats(struct cgpu_info *compac)
 	root = api_add_bool(root, "FreqLocked", &info->lock_freq, false);
 	if (info->asic_type == BM1397)
 		root = api_add_int(root, "USBProp", &info->usb_prop, false);
+	if (opt_gekko_mine2)
+		mutex_lock(&info->ghlock);
 	for (i = 0; i < (int)info->chips; i++)
 	{
 		struct ASIC_INFO *asic = &info->asics[i];
-		//snprintf(nambuf, sizeof(nambuf), "Chip%dNonces", i);
-		//root = api_add_int(root, nambuf, &asic->nonces, true);
+		snprintf(nambuf, sizeof(nambuf), "Chip%dNonces", i);
+		root = api_add_int(root, nambuf, &asic->nonces, true);
+		snprintf(nambuf, sizeof(nambuf), "Chip%dDups", i);
+		root = api_add_uint(root, nambuf, &asic->dupsall, true);
+		if (opt_gekko_mine2)
+		{
+			gc_offset(info, asic, &now, false, true);
+			snprintf(nambuf, sizeof(nambuf), "Chip%dRanges", i);
+			buf256[0] = '\0';
+			for (j = 0; j < CHNUM; j++)
+			{
+				len = strlen(buf256);
+				// slash, digit, null = 3
+				if ((len - sizeof(buf256)) < 3)
+					break;
+				k = CHOFF(asic->gc.offset - j);
+				snprintf(buf256+len, sizeof(buf256)-len, "/%d", asic->gc.noncenum[k]);
+			}
+			len = strlen(buf256);
+			if ((len - sizeof(buf256)) >= 3)
+				snprintf(buf256+len, sizeof(buf256)-len, "/%d", asic->gc.noncesum);
+			len = strlen(buf256);
+			if ((len - sizeof(buf256)) >= 3)
+				snprintf(buf256+len, sizeof(buf256)-len, "/%.2f%%", noncepercent(info, i, &now));
+			root = api_add_string(root, nambuf, buf256+1, true);
+		}
 		snprintf(nambuf, sizeof(nambuf), "Chip%dFreqSend", i);
 		root = api_add_float(root, nambuf, &asic->frequency, true);
 		snprintf(nambuf, sizeof(nambuf), "Chip%dFreqReply", i);
 		root = api_add_float(root, nambuf, &asic->frequency_reply, true);
 	}
+	if (opt_gekko_mine2)
+		mutex_unlock(&info->ghlock);
 
 	for (i = 0; i < 16; i++)
 	{
-		snprintf(nambuf, sizeof(nambuf), "ReplyByte-%1X0", i);
+		snprintf(nambuf, sizeof(nambuf), "NonceByte-%1X0", i);
 		buf256[0] = '\0';
 		for (j = 0; j < 16; j++)
 		{
@@ -4516,6 +4714,22 @@ static struct api_data *compac_api_stats(struct cgpu_info *compac)
 			if ((len - sizeof(buf256)) < 3)
 				break;
 			snprintf(buf256+len, sizeof(buf256)-len, ".%"PRId64, info->noncebyte[i*16+j]);
+		}
+		root = api_add_string(root, nambuf, buf256+1, true);
+	}
+
+	if (opt_gekko_mine2)
+	for (i = 0; i < 16; i++)
+	{
+		snprintf(nambuf, sizeof(nambuf), "nb2c-%1X0", i);
+		buf256[0] = '\0';
+		for (j = 0; j < 16; j++)
+		{
+			len = strlen(buf256);
+			// dot, digit, null = 3
+			if ((len - sizeof(buf256)) < 3)
+				break;
+			snprintf(buf256+len, sizeof(buf256)-len, ".%u", info->nb2chip[i*16+j]);
 		}
 		root = api_add_string(root, nambuf, buf256+1, true);
 	}
