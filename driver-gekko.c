@@ -278,7 +278,7 @@ static void gsf_calc_nb2c(struct cgpu_info *compac)
 			for (j = 0; j < 64; j++)
 			{
 				c = (int)((double)j / fac);
-				if (c >= info->chips)
+				if (c >= (int)(info->chips))
 					c = info->chips - 1;
 				info->nb2chip[i + j] = c;
 			}
@@ -299,13 +299,12 @@ static void gc_wipe(struct GEKKOCHIP *gc, struct timeval *now)
 
 static void gc_wipe_all(struct COMPAC_INFO *info, struct timeval *now, bool locked)
 {
-	struct GEKKOCHIP *gc;
 	int i;
 
 	if (!locked)
 		mutex_lock(&info->ghlock);
 
-	for (i = 0; i < info->chips; i++)
+	for (i = 0; i < (int)(info->chips); i++)
 		gc_wipe(&(info->asics[i].gc), now);
 
 	if (!locked)
@@ -381,7 +380,7 @@ static void gh_offset(struct COMPAC_INFO *info, struct timeval *now, bool wipe, 
 	if (gh->zerosec == 0)
 	{
 		gh->zerosec = now->tv_sec;
-		for (i = 0; i < info->chips; i++)
+		for (i = 0; i < (int)(info->chips); i++)
 			info->asics[i].gc.zerosec = now->tv_sec;
 	}
 	else
@@ -794,7 +793,6 @@ static void set_ticket(struct cgpu_info *compac, float diff, bool force, bool lo
 	struct timeval now;
 	bool got = false;
 	uint32_t udiff, new_diff = 0, new_mask = 0, cc;
-	uint16_t c;
 	int i;
 
 	if (diff == 0.0)
@@ -2004,7 +2002,6 @@ static void *compac_mine(void *object)
 	unsigned int i, j;
 	uint32_t err = 0;
 	uint32_t itr = 0;
-	uint64_t hashes = 0;
 	double rolling_minute[SAMPLE_SIZE] = {0};
 
 	int adjustable = 0;
@@ -2542,7 +2539,6 @@ static void *compac_mine(void *object)
 		}
 
 		int task_len = info->task_len;
-		unsigned char jid = info->task[2];
 
 		err = usb_write(compac, (char *)info->task, task_len, &sent_bytes, C_SENDWORK);
 		//dumpbuffer(compac, LOG_WARNING, "TASK.TX", info->task, task_len);
@@ -2628,10 +2624,9 @@ static void *compac_mine2(void *object)
 	struct timeval last_frequency_check = (struct timeval){0};
 
 	struct sched_param param;
-	int sent_bytes, sleep_us, policy, ret_nice, ping_itr = 1;
+	int sent_bytes, sleep_us, policy, ret_nice;
 	unsigned int i, j;
 	uint32_t err = 0;
-	uint64_t hashes = 0;
 
 	uint64_t hashrate_gs;
 	double dev_runtime, wu;
@@ -2943,7 +2938,7 @@ static void *compac_mine2(void *object)
 				&&  (info->gh.last == (GHNUM-1) || info->gh.noncesum > GHNONCES)
 				&&  (ms_tdiff(&now, &info->tune_limit) >= MS_MINUTE_2))
 				{
-					float new_freq, prev_freq, freq_diff;
+					float new_freq, prev_freq;
 					double hash_for_freq, curr_hr;
 					int nonces, last;
 
@@ -3089,7 +3084,9 @@ static void *compac_mine2(void *object)
 		}
 
 		int task_len = info->task_len;
+#if 0
 		unsigned char jid = info->task[2];
+#endif
 
 		if (info->asic_type == BM1397)
 		{ 
@@ -3378,7 +3375,6 @@ static void *compac_listen2(struct cgpu_info *compac, struct COMPAC_INFO *info)
 {
 	unsigned char rx[BUFFER_MAX];
 	struct timeval now;
-	uint32_t err = 0;
 	int read_bytes, tmo, pos = 0, len, i, prelen;
 	bool okcrc, used, chipped;
 	K_ITEM *item;
@@ -3398,7 +3394,7 @@ static void *compac_listen2(struct cgpu_info *compac, struct COMPAC_INFO *info)
 			tmo = 1000;
 		}
 
-		err = usb_read_timeout(compac, ((char *)rx)+pos, BUFFER_MAX-pos, &read_bytes, tmo, C_GETRESULTS);
+		usb_read_timeout(compac, ((char *)rx)+pos, BUFFER_MAX-pos, &read_bytes, tmo, C_GETRESULTS);
 		pos += read_bytes;
 
 		cgtime(&now);
@@ -3623,7 +3619,6 @@ static void *compac_listen(void *object)
 	unsigned char rx[BUFFER_MAX];
 	unsigned char *prx = rx;
 	int read_bytes, cmd_resp, pos;
-	uint32_t err = 0;
 	unsigned int i, rx_bytes;
 
 	memset(rx, 0, sizeof(rx));
@@ -3644,7 +3639,7 @@ static void *compac_listen(void *object)
 				unsigned char buffer[] = {0x84, 0x00, 0x00, 0x00};
 				compac_send(compac, buffer, sizeof(buffer), 8 * sizeof(buffer) - 5);
 			}
-			err = usb_read_timeout(compac, (char *)rx, BUFFER_MAX, &read_bytes, 1000, C_GETRESULTS);
+			usb_read_timeout(compac, (char *)rx, BUFFER_MAX, &read_bytes, 1000, C_GETRESULTS);
 			dumpbuffer(compac, LOG_INFO, "CMD.RX", rx, read_bytes);
 
 			rx_bytes = (unsigned int)read_bytes;
@@ -3658,7 +3653,7 @@ static void *compac_listen(void *object)
 				rx_bytes = 0;
 			}
 
-			err = usb_read_timeout(compac, (char *)(&rx[pos]), info->rx_len, &read_bytes, 20, C_GETRESULTS);
+			usb_read_timeout(compac, (char *)(&rx[pos]), info->rx_len, &read_bytes, 20, C_GETRESULTS);
 			rx_bytes += read_bytes;
 			pos = rx_bytes;
 		}
@@ -3728,7 +3723,7 @@ static void *compac_listen(void *object)
 			if (bmcrc(&rx[rx_bytes - info->rx_len], 8 * info->rx_len - 5) != info->rx[rx_bytes - 1]) {
 				int n_read_bytes;
 				pos = rx_bytes;
-				err = usb_read_timeout(compac, &rx[pos], BUFFER_MAX - pos, &n_read_bytes, 5, C_GETRESULTS);
+				usb_read_timeout(compac, &rx[pos], BUFFER_MAX - pos, &n_read_bytes, 5, C_GETRESULTS);
 				rx_bytes += n_read_bytes;
 
 				if (rx_bytes % info->rx_len != 0 && rx_bytes >= info->rx_len) {
@@ -4047,7 +4042,7 @@ static int64_t compac_scanwork(struct thr_info *thr)
 
 	struct timeval now;
 	int read_bytes;
-	uint64_t hashes = 0;
+	// uint64_t hashes = 0;
 	uint64_t xhashes = 0;
 
 	if (info->chips == 0)
@@ -4171,7 +4166,7 @@ static int64_t compac_scanwork(struct thr_info *thr)
 	}
 
 	mutex_lock(&info->lock);
-	hashes = info->hashes;
+	// hashes = info->hashes;
 	xhashes = info->xhashes;
 	info->hashes = 0;
 	info->xhashes = 0;
@@ -4530,7 +4525,7 @@ static struct api_data *compac_api_stats(struct cgpu_info *compac)
 	struct COMPAC_INFO *info = compac->device_data;
 	struct api_data *root = NULL;
 	struct timeval now;
-	char nambuf[64], rangebuf[64], buf256[256];
+	char nambuf[64], buf256[256];
 	double taskdiff, tps, ghs, off;
 	time_t secs;
 	size_t len;
