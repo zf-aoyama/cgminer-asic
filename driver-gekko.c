@@ -187,7 +187,7 @@ applog(LOG_ERR, "%s()  [%02x %02x %02x %02x %02x %02x %02x %02x]", __func__,
 	usb_write(compac, (char *)(info->cmd), bytes, &read_bytes, C_REQUESTRESULTS);
 
 	//let the usb frame propagate
-	if (info->asic_type == BM1397)
+	if (info->asic_type == BM1397 && info->usb_prop != 1000)
 		cgsleep_us(info->usb_prop);
 	else
 		cgsleep_ms(1);
@@ -1520,7 +1520,7 @@ else
 		applog(LOG_INFO, "%d: %s %d - Duplicate Nonce : %08x @ %02x [%02x %02x %02x %02x %02x %02x %02x]",
 			compac->cgminer_id, compac->drv->name, compac->device_id, nonce, job_id,
 			rx[0], rx[1], rx[2], rx[3], rx[4], rx[5], rx[6]);
-#ifndef WIN32
+
 		mutex_lock(&info->lock);
 		info->dups++;
 		info->dupsall++;
@@ -1531,7 +1531,7 @@ else
 		if (info->dups == 1)
 			info->mining_state = MINER_MINING_DUPS;
 		mutex_unlock(&info->lock);
-#endif
+
 		return;
 	}
 
@@ -3147,7 +3147,7 @@ applog(LOG_ERR, " [%02x %02x %02x %02x %02x %02x %02x %02x]",
 		}
 
 		//let the usb frame propagate
-		if (info->asic_type == BM1397)
+		if (info->asic_type == BM1397 && info->usb_prop != 1000)
 			cgsleep_us(info->usb_prop);
 		else
 			cgsleep_ms(1);

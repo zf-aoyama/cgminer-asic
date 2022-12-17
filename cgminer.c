@@ -319,7 +319,11 @@ float opt_gekko_gsd_freq = 100;
 float opt_gekko_gse_freq = 150;
 float opt_gekko_tune_up = 97;
 float opt_gekko_tune_down = 95;
+#if defined(__APPLE__) || defined (WIN32)
+float opt_gekko_wait_factor = 0.3;
+#else
 float opt_gekko_wait_factor = 0.5;
+#endif
 float opt_gekko_step_freq = 6.25;
 int opt_gekko_gsh_freq = 100;
 int opt_gekko_gsi_freq = 550;
