@@ -319,8 +319,10 @@ float opt_gekko_gsd_freq = 100;
 float opt_gekko_gse_freq = 150;
 float opt_gekko_tune_up = 97;
 float opt_gekko_tune_down = 95;
-#if defined(__APPLE__) || defined (WIN32)
-float opt_gekko_wait_factor = 0.45;
+#if defined(__APPLE__)
+float opt_gekko_wait_factor = 0.3;
+#elif defined (WIN32)
+float opt_gekko_wait_factor = 0.4;
 #else
 float opt_gekko_wait_factor = 0.5;
 #endif
@@ -1959,7 +1961,7 @@ static struct opt_table opt_config_table[] = {
 			 "Disable GekkoScience NewPac/R606/CompacF AsicBoost"),
 	OPT_WITHOUT_ARG("--gekko-lowboost",
 			 opt_set_bool, &opt_gekko_lowboost,
-			 "GekkoScience NewPac/R606/CompacF AsicBoost - 2 midstate"),
+			 "GekkoScience NewPac/R606 AsicBoost - 2 midstate"),
 	OPT_WITH_ARG("--gekko-terminus-freq",
 		     set_float_0_to_500, opt_show_floatval, &opt_gekko_gse_freq,
 		     "Set GekkoScience Terminus BM1384 frequency in MHz, range 6.25-500"),
@@ -7897,7 +7899,7 @@ void get_work_by_nonce2(struct thr_info *thr,
 }
 #endif
 
-#ifdef STRATUM_WORK_TIMING
+#if STRATUM_WORK_TIMING
 cglock_t swt_lock;
 uint64_t stratum_work_count;
 uint64_t stratum_work_time;

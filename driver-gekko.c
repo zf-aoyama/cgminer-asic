@@ -20,6 +20,15 @@
 #endif
 #endif
 
+// usleep reliability
+#if defined(__APPLE__)
+#define USLEEPMIN 350
+#elif defined (WIN32)
+#define USLEEPMIN 250
+#else
+#define USLEEPMIN 200
+#endif
+
 static bool compac_prepare(struct thr_info *thr);
 static pthread_mutex_t static_lock = PTHREAD_MUTEX_INITIALIZER;
 static bool last_widescreen;
@@ -2148,7 +2157,7 @@ static void *compac_mine2(void *object)
 				// 1ms is more than enough
 				if (use_us > 1000)
 					use_us = 1000;
-				if (use_us >= 200)
+				if (use_us >= USLEEPMIN)
 				{
 					gekko_usleep(info, use_us);
 					continue;
@@ -2537,8 +2546,8 @@ static void *compac_mine2(void *object)
 			if (left_us > 0)
 			{
 				// allow time for get_queued()
-				left_us -= (info->work_usec_avg - 200);
-				if (left_us >= 200)
+				left_us -= (info->work_usec_avg - USLEEPMIN);
+				if (left_us >= USLEEPMIN)
 					gekko_usleep(info, left_us);
 			}
 			else
@@ -2592,8 +2601,8 @@ static void *compac_mine2(void *object)
 				left_us = info->max_task_wait - diff_us;
 				if (left_us > 0)
 				{
-					left_us -= 150;
-					if (left_us >= 200 && left_us < 500)
+					left_us -= USLEEPMIN;
+					if (left_us >= USLEEPMIN && left_us < 500)
 						gekko_usleep(info, left_us);
 				}
 				else
@@ -4459,7 +4468,7 @@ static char *compac_api_set(struct cgpu_info *compac, char *option, char *settin
 		{
 			snprintf(replybuf, siz, "reset freq: 0-1200 chip: N:0-800 target: 0-1200"
 						" lockfreq unlockfreq waitfactor: 0.01-2.0"
-						" usbprop: 200-1000");
+						" usbprop: %d-1000", USLEEPMIN);
 		}
 		else
 		{
@@ -4594,7 +4603,7 @@ static char *compac_api_set(struct cgpu_info *compac, char *option, char *settin
 			return replybuf;
 		}
 
-		info->usb_prop = (int)bound(atoi(setting), 200, 1000);
+		info->usb_prop = (int)bound(atoi(setting), USLEEPMIN, 1000);
 
 		return NULL;
 	}
