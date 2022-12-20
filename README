@@ -685,6 +685,9 @@ modem and the driver needs to be unloaded for cgminer to work:
  sudo kextunload -b com.apple.driver.AppleUSBCDC
  sudo kextunload -b com.apple.driver.AppleUSBCDCACMData
 
+If you are running an old Mac and desktop performance is noticeably affected,
+adding the --mac-yield option may help, but also may slow down mining.
+
 There may be a limit to the number of USB devices that you are allowed to start.
 The following set of commands, followed by a reboot will increase that:
 
