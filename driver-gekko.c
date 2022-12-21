@@ -40,6 +40,8 @@ static uint8_t *init_count;
 static uint32_t stat_len;
 static uint32_t chip_max;
 
+#define MS2US(_n) ((_n) * 1000)
+
 // report averages and how far they overrun the requested time
 // linux would appear to be unable to handle less than 55us
 // on the RPi4 it would regularly sleep 3 times as long
@@ -102,9 +104,6 @@ static void gekko_usleep(struct COMPAC_INFO *info, int usec)
 	mutex_unlock(&info->slock);
 #endif
 }
-
-// force all calls to cgsleep_ms() to use gekko_usleep()
-#define cgsleep_ms(_usec) gekko_usleep(info, (_usec) * 1000)
 
 static float fbound(float value, float lower_bound, float upper_bound)
 {
@@ -179,7 +178,7 @@ static int compac_micro_send(struct cgpu_info *compac, uint8_t cmd, uint8_t chan
 
 	usb_val = (FTDI_BITMODE_CBUS << 8) | 0xF3; // low byte: bitmask - 1111 0011 - CB1(HI), CB0(HI)
 	usb_transfer(compac, FTDI_TYPE_OUT, FTDI_REQUEST_BITMODE, usb_val, info->interface, C_SETMODEM);
-	cgsleep_ms(2);
+	gekko_usleep(info, MS2US(2));
 	//usb_transfer(compac, FTDI_TYPE_OUT, FTDI_REQUEST_BAUD, 0x06, (FTDI_INDEX_BAUD_BTS & 0xff00) | info->interface, C_SETBAUD);
 
 	info->cmd[0] = cmd | channel;
@@ -219,7 +218,7 @@ static int compac_micro_send(struct cgpu_info *compac, uint8_t cmd, uint8_t chan
 
 	usb_val = (FTDI_BITMODE_CBUS << 8) | 0xF2; // low byte: bitmask - 1111 0010 - CB1(HI), CB0(LO)
 	usb_transfer(compac, FTDI_TYPE_OUT, FTDI_REQUEST_BITMODE, usb_val, info->interface, C_SETMODEM);
-	cgsleep_ms(2);
+	gekko_usleep(info, MS2US(2));
 
 	return read_bytes;
 }
@@ -265,10 +264,10 @@ applog(LOG_ERR, "%s()  [%02x %02x %02x %02x %02x %02x %02x %02x]", __func__,
 	usb_write(compac, (char *)(info->cmd), bytes, &read_bytes, C_REQUESTRESULTS);
 
 	//let the usb frame propagate
-	if (info->asic_type == BM1397 && info->usb_prop != 1000)
+	if (info->asic_type == BM1397)
 		gekko_usleep(info, info->usb_prop);
 	else
-		cgsleep_ms(1);
+		gekko_usleep(info, MS2US(1));
 }
 
 static float limit_freq(struct COMPAC_INFO *info, float freq, bool zero)
@@ -923,9 +922,9 @@ static void set_ticket(struct cgpu_info *compac, float diff, bool force, bool lo
 
 	compac_send2(compac, ticket, sizeof(ticket), 8 * sizeof(ticket) - 8, "ticket");
 	if (!force)
-		cgsleep_ms(10);
+		gekko_usleep(info, MS2US(10));
 	else
-		cgsleep_ms(20);
+		gekko_usleep(info, MS2US(20));
 
 	applog(LOG_ERR, "%d: %s %d - set ticket to 0x%02x/%u work %u/%.1f",
 		compac->cgminer_id, compac->drv->name, compac->device_id,
@@ -1073,12 +1072,12 @@ static void calc_gsf_freq(struct cgpu_info *compac, float frequency, int chip)
 
 		for (i = 0; i < 2; i++)
 		{
-			cgsleep_ms(10);
+			gekko_usleep(info, MS2US(10));
 			compac_send2(compac, prefreqall, sizeof(prefreqall), 8 * sizeof(prefreqall) - 8, "prefreq");
 		}
 		for (i = 0; i < 2; i++)
 		{
-			cgsleep_ms(10);
+			gekko_usleep(info, MS2US(10));
 			compac_send2(compac, freqbufall, sizeof(freqbufall), 8 * sizeof(freqbufall) - 8, "freq");
 		}
 
@@ -1096,12 +1095,12 @@ static void calc_gsf_freq(struct cgpu_info *compac, float frequency, int chip)
 
 		for (i = 0; i < 2; i++)
 		{
-			cgsleep_ms(10);
+			gekko_usleep(info, MS2US(10));
 			compac_send2(compac, prefreqch, sizeof(prefreqch), 8 * sizeof(prefreqch) - 8, "prefreq");
 		}
 		for (i = 0; i < 2; i++)
 		{
-			cgsleep_ms(10);
+			gekko_usleep(info, MS2US(10));
 			compac_send2(compac, freqbufch, sizeof(freqbufch), 8 * sizeof(freqbufch) - 8, "freq");
 		}
 
@@ -1112,7 +1111,7 @@ static void calc_gsf_freq(struct cgpu_info *compac, float frequency, int chip)
 	if (doall)
 		info->frequency = frequency;
 
-	cgsleep_ms(10);
+	gekko_usleep(info, MS2US(10));
 
 	if (doall)
 		snprintf(chipn, sizeof(chipn), "all");
@@ -1141,7 +1140,7 @@ static void compac_send_chain_inactive(struct cgpu_info *compac)
 		for (i = 0; i < 3; i++)
 		{
 			compac_send2(compac, chainin, sizeof(chainin), 8 * sizeof(chainin) - 8, "chin");
-			cgsleep_ms(100);
+			gekko_usleep(info, MS2US(100));
 		}
 
 		unsigned char chippy[] = {0x40, 0x05, 0x00, 0x00, 0x00};
@@ -1149,7 +1148,7 @@ static void compac_send_chain_inactive(struct cgpu_info *compac)
 		{
 			chippy[2] = CHIPPY1397(info, i);
 			compac_send2(compac, chippy, sizeof(chippy), 8 * sizeof(chippy) - 8, "chippy");
-			cgsleep_ms(10);
+			gekko_usleep(info, MS2US(10));
 		}
 
 		unsigned char init1[] = {0x51, 0x09, 0x00, 0x80, 0x00, 0x00, 0x00, 0x00, 0x00};
@@ -1158,13 +1157,13 @@ static void compac_send_chain_inactive(struct cgpu_info *compac)
 		unsigned char init4[] = {0x51, 0x09, 0x00, 0x3C, 0x80, 0x00, 0x80, 0x74, 0x00};
 
 		compac_send2(compac, init1, sizeof(init1), 8 * sizeof(init1) - 8, "init1");
-		cgsleep_ms(10);
+		gekko_usleep(info, MS2US(10));
 		compac_send2(compac, init2, sizeof(init2), 8 * sizeof(init2) - 8, "init2");
-		cgsleep_ms(100);
+		gekko_usleep(info, MS2US(100));
 		compac_send2(compac, init3, sizeof(init3), 8 * sizeof(init3) - 8, "init3");
-		cgsleep_ms(50);
+		gekko_usleep(info, MS2US(50));
 		compac_send2(compac, init4, sizeof(init4), 8 * sizeof(init4) - 8, "init4");
-		cgsleep_ms(100);
+		gekko_usleep(info, MS2US(100));
 
 		// set ticket based on chips, pool will be above this anyway
 		set_ticket(compac, 0.0, true, false);
@@ -1175,10 +1174,10 @@ static void compac_send_chain_inactive(struct cgpu_info *compac)
 		for (j = 0; j < 2; j++)
 		{
 			compac_send2(compac, init5, sizeof(init5), 8 * sizeof(init5) - 8, "init5");
-			cgsleep_ms(50);
+			gekko_usleep(info, MS2US(50));
 		}
 		compac_send2(compac, init6, sizeof(init6), 8 * sizeof(init6) - 8, "init6");
-		cgsleep_ms(100);
+		gekko_usleep(info, MS2US(100));
 
 		unsigned char baudrate[] = { 0x51, 0x09, 0x00, 0x18, 0x00, 0x00, 0x61, 0x31, 0x00 }; // lo 1.51M
 		info->bauddiv = 1; // 1.5M
@@ -1197,31 +1196,31 @@ static void compac_send_chain_inactive(struct cgpu_info *compac)
 		applog(LOG_ERR, "%d: %s %d - setting bauddiv : %02x %02x (ftdi/%d)",
 			compac->cgminer_id, compac->drv->name, compac->device_id, baudrate[5], baudrate[6], info->bauddiv + 1);
 		compac_send2(compac, baudrate, sizeof(baudrate), 8 * sizeof(baudrate) - 8, "baud");
-		cgsleep_ms(10);
+		gekko_usleep(info, MS2US(10));
 
 		usb_transfer(compac, FTDI_TYPE_OUT, FTDI_REQUEST_BAUD, info->bauddiv + 1,
 				(FTDI_INDEX_BAUD_BTS & 0xff00) | info->interface, C_SETBAUD);
-		cgsleep_ms(10);
+		gekko_usleep(info, MS2US(10));
 
 		calc_gsf_freq(compac, info->frequency, -1);
 
-		cgsleep_ms(20);
+		gekko_usleep(info, MS2US(20));
 	} else if (info->asic_type == BM1387) {
 		unsigned char buffer[5] = {0x55, 0x05, 0x00, 0x00, 0x00};
 		compac_send(compac, buffer, sizeof(buffer), 8 * sizeof(buffer) - 8); // chain inactive
-		cgsleep_ms(5);
+		gekko_usleep(info, MS2US(5));
 		compac_send(compac, buffer, sizeof(buffer), 8 * sizeof(buffer) - 8); // chain inactive
-		cgsleep_ms(5);
+		gekko_usleep(info, MS2US(5));
 		compac_send(compac, buffer, sizeof(buffer), 8 * sizeof(buffer) - 8); // chain inactive
 		for (i = 0; i < info->chips; i++) {
 			buffer[0] = 0x41;
 			buffer[1] = 0x05;
 			buffer[2] = (0x100 / info->chips) * i;
-			cgsleep_ms(5);
+			gekko_usleep(info, MS2US(5));
 			compac_send(compac, buffer, sizeof(buffer), 8 * sizeof(buffer) - 8);
 		}
 
-		cgsleep_ms(10);
+		gekko_usleep(info, MS2US(10));
 		unsigned char baudrate[] = { 0x58, 0x09, 0x00, 0x1C, 0x00, 0x20, 0x07, 0x00, 0x19 };
 		if (opt_gekko_bauddiv) {
 			info->bauddiv = opt_gekko_bauddiv;
@@ -1236,10 +1235,10 @@ static void compac_send_chain_inactive(struct cgpu_info *compac)
 			compac->cgminer_id, compac->drv->name, compac->device_id, info->bauddiv);
 		baudrate[6] = info->bauddiv;
 		compac_send(compac, baudrate, sizeof(baudrate), 8 * sizeof(baudrate) - 8);
-		cgsleep_ms(10);
+		gekko_usleep(info, MS2US(10));
 		usb_transfer(compac, FTDI_TYPE_OUT, FTDI_REQUEST_BAUD, (info->bauddiv + 1),
 				(FTDI_INDEX_BAUD_BTS & 0xff00) | info->interface, C_SETBAUD);
-		cgsleep_ms(10);
+		gekko_usleep(info, MS2US(10));
 
 		unsigned char gateblk[9] = {0x58, 0x09, 0x00, 0x1C, 0x40, 0x20, 0x99, 0x80, 0x01};
 		gateblk[6] = 0x80 | info->bauddiv;
@@ -1515,18 +1514,18 @@ static void compac_toggle_reset(struct cgpu_info *compac)
 
 	usb_val = (FTDI_BITMODE_CBUS << 8) | 0xF2; // low byte: bitmask - 1111 0010 - CB1(HI)
 	usb_transfer(compac, FTDI_TYPE_OUT, FTDI_REQUEST_BITMODE, usb_val, info->interface, C_SETMODEM);
-	cgsleep_ms(30);
+	gekko_usleep(info, MS2US(30));
 
 	usb_val = (FTDI_BITMODE_CBUS << 8) | 0xF0; // low byte: bitmask - 1111 0000 - CB1(LO)
 	usb_transfer(compac, FTDI_TYPE_OUT, FTDI_REQUEST_BITMODE, usb_val, info->interface, C_SETMODEM);
 	if (info->asic_type == BM1397)
-		cgsleep_ms(1000);
+		gekko_usleep(info, MS2US(1000));
 	else
-		cgsleep_ms(30);
+		gekko_usleep(info, MS2US(30));
 
 	usb_val = (FTDI_BITMODE_CBUS << 8) | 0xF2; // low byte: bitmask - 1111 0010 - CB1(HI)
 	usb_transfer(compac, FTDI_TYPE_OUT, FTDI_REQUEST_BITMODE, usb_val, info->interface, C_SETMODEM);
-	cgsleep_ms(200);
+	gekko_usleep(info, MS2US(200));
 
 	cgtime(&info->last_reset);
 }
@@ -1888,7 +1887,7 @@ static uint64_t compac_check_nonce(struct cgpu_info *compac)
 		applog(LOG_INFO, "%d: %s %d - Duplicate Nonce : %08x @ %02x [%02x %02x %02x %02x %02x %02x]",
 			compac->cgminer_id, compac->drv->name, compac->device_id, nonce, job_id,
 			info->rx[0], info->rx[1], info->rx[2], info->rx[3], info->rx[4], info->rx[5]);
-#ifndef WIN32
+
 		info->dups++;
 		info->dupsall++;
 		info->dupsreset++;
@@ -1898,7 +1897,7 @@ static uint64_t compac_check_nonce(struct cgpu_info *compac)
 		if (info->dups == 1) {
 			info->mining_state = MINER_MINING_DUPS;
 		}
-#endif
+
 		return hashes;
 	}
 
@@ -2143,7 +2142,7 @@ static void *compac_mine2(void *object)
 		||  compac->usbinfo.nodev
 		||  (info->mining_state != MINER_MINING && info->mining_state != MINER_MINING_DUPS))
 		{
-			cgsleep_ms(10);
+			gekko_usleep(info, MS2US(10));
 			continue;
 		}
 
@@ -2534,7 +2533,7 @@ static void *compac_mine2(void *object)
 		// don't bother with work if it's not mining
 		if (!has_freq)
 		{
-			cgsleep_ms(10);
+			gekko_usleep(info, MS2US(10));
 			continue;
 		}
 
@@ -2647,7 +2646,7 @@ static void *compac_mine2(void *object)
 				// get Dups instead of sending busy work
 
 				// sleep 1ms then fast loop back
-				cgsleep_ms(1);
+				gekko_usleep(info, MS2US(1));
 				last_was_busy = true;
 				continue;
 			}
@@ -2721,7 +2720,7 @@ applog(LOG_ERR, " [%02x %02x %02x %02x %02x %02x %02x %02x]",
 		if (info->asic_type == BM1397 && info->usb_prop != 1000)
 			gekko_usleep(info, info->usb_prop);
 		else
-			cgsleep_ms(1);
+			gekko_usleep(info, MS2US(1));
 
 		info->task_ms = (info->task_ms * 9 + ms_tdiff(&now, &info->last_task)) / 10;
 
@@ -2926,7 +2925,7 @@ static bool gsf_reply(struct COMPAC_INFO *info, unsigned char *rx, int len, stru
 			fc2 = rx[5] & 0x0f;
 
 			// only allow a valid reply
-			if (fa > 0 && fb > 0 && fc1 > 0 && fc2 > 0)
+			if (fa >= 0 && fb > 0 && fc1 > 0 && fc2 > 0)
 			{
 				asic->frequency_reply = info->freq_mult * fa / fb / fc1 / fc2;
 				asic->last_frequency_reply.tv_sec = now->tv_sec;
@@ -3430,10 +3429,6 @@ static bool compac_init(struct thr_info *thr)
 	cgtime(&info->start_time);
 	cgtime(&info->monitor_time);
 
-#if TUNE_CODE
-	pthread_mutex_init(&info->slock, NULL);
-#endif
-
 	info->step_freq = FREQ_BASE(opt_gekko_step_freq);
 
 	// if it can't mine at this freq the hardware has failed
@@ -3557,7 +3552,7 @@ static bool compac_init(struct thr_info *thr)
 		}
 		pthread_detach(info->rthr.pth);
 
-		cgsleep_ms(100);
+		gekko_usleep(info, MS2US(100));
 
 		if (thr_info_create(&(info->wthr), NULL, compac_mine2, (void *)compac)) {
 			applog(LOG_ERR, "%d: %s %d - write thread create failed", compac->cgminer_id, compac->drv->name, compac->device_id);
@@ -3570,7 +3565,7 @@ static bool compac_init(struct thr_info *thr)
 
 		if (info->ident == IDENT_GSF || info->ident == IDENT_GSFM)
 		{
-			cgsleep_ms(10);
+			gekko_usleep(info, MS2US(10));
 
 			if (pthread_mutex_init(&info->nlock, NULL))
 			{
@@ -3614,7 +3609,7 @@ static int64_t compac_scanwork(struct thr_info *thr)
 	uint64_t xhashes = 0;
 
 	if (info->chips == 0)
-		cgsleep_ms(10);
+		gekko_usleep(info, MS2US(10));
 
 	if (compac->usbinfo.nodev)
 		return -1;
@@ -3629,7 +3624,7 @@ static int64_t compac_scanwork(struct thr_info *thr)
 
 	switch (info->mining_state) {
 		case MINER_INIT:
-			cgsleep_ms(50);
+			gekko_usleep(info, MS2US(50));
 			compac_flush_buffer(compac);
 			info->chips = 0;
 			info->ramping = 0;
@@ -3646,10 +3641,10 @@ static int64_t compac_scanwork(struct thr_info *thr)
 				info->mining_state = MINER_RESET;
 				return 0;
 			}
-			cgsleep_ms(10);
+			gekko_usleep(info, MS2US(10));
 			break;
 		case MINER_CHIP_COUNT_OK:
-			cgsleep_ms(50);
+			gekko_usleep(info, MS2US(50));
 			//compac_set_frequency(compac, info->frequency_start);
 			compac_send_chain_inactive(compac);
 
@@ -3676,7 +3671,7 @@ static int64_t compac_scanwork(struct thr_info *thr)
 			info->ramping += info->add_job_id;
 			info->task_ms = (info->task_ms * 9 + ms_tdiff(&now, &info->last_task)) / 10;
 			cgtime(&info->last_task);
-			cgsleep_ms(10);
+			gekko_usleep(info, MS2US(10));
 			return 0;
 			break;
 		case MINER_OPEN_CORE_OK:
@@ -3737,7 +3732,7 @@ static int64_t compac_scanwork(struct thr_info *thr)
 	info->xhashes = 0;
 	mutex_unlock(&info->lock);
 
-	cgsleep_ms(1);
+	gekko_usleep(info, MS2US(1));
 	return xhashes * 0xffffffffull;
 	//return hashes;
 }
@@ -3762,6 +3757,11 @@ static struct cgpu_info *compac_detect_one(struct libusb_device *dev, struct usb
 
 	// all zero
 	info = cgcalloc(1, sizeof(struct COMPAC_INFO));
+
+#if TUNE_CODE
+	pthread_mutex_init(&info->slock, NULL);
+#endif
+
 	compac->device_data = (void *)info;
 
 	info->ident = usb_ident(compac);
