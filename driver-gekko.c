@@ -22,11 +22,14 @@
 
 // usleep reliability
 #if defined(__APPLE__)
-#define USLEEPMIN 350
+#define USLEEPMIN 2000
+#define USLEEPPLUS 200
 #elif defined (WIN32)
 #define USLEEPMIN 250
+#define USLEEPPLUS 100
 #else
 #define USLEEPMIN 200
+#define USLEEPPLUS 50
 #endif
 
 static bool compac_prepare(struct thr_info *thr);
@@ -99,6 +102,9 @@ static void gekko_usleep(struct COMPAC_INFO *info, int usec)
 	mutex_unlock(&info->slock);
 #endif
 }
+
+// force all calls to cgsleep_ms() to use gekko_usleep()
+#define cgsleep_ms(_usec) gekko_usleep(info, (_usec) * 1000)
 
 static float fbound(float value, float lower_bound, float upper_bound)
 {
@@ -2440,7 +2446,7 @@ static void *compac_mine2(void *object)
 					{
 						hash_for_freq = info->frequency * (double)(info->cores * info->chips);
 						// a low hash rate means frequency may be too high
-						if (curr_hr < (hash_for_freq * GHREQUIRE))
+						if (curr_hr < (hash_for_freq * info->ghrequire))
 						{
 							new_freq = FREQ_BASE(info->frequency - (info->freq_base * 2));
 							if (new_freq < info->min_freq)
@@ -2452,7 +2458,7 @@ static void *compac_mine2(void *object)
 
 							applog(LOG_WARNING,"%d: %s %d - %.2fGH/s low [%.2f/%.2f/%d] reset limit %.2fMHz -> %.2fMHz",
 								compac->cgminer_id, compac->drv->name, compac->device_id,
-								curr_hr/1.0e3, hash_for_freq/1.0e3, hash_for_freq*GHREQUIRE/1.0e3,
+								curr_hr/1.0e3, hash_for_freq/1.0e3, hash_for_freq*info->ghrequire/1.0e3,
 								nonces, prev_freq, new_freq);
 
 							mutex_lock(&info->lock);
@@ -2545,8 +2551,8 @@ static void *compac_mine2(void *object)
 			left_us = info->max_task_wait - diff_us;
 			if (left_us > 0)
 			{
-				// allow time for get_queued()
-				left_us -= (info->work_usec_avg - USLEEPMIN);
+				// allow time for get_queued() + a bit
+				left_us -= (info->work_usec_avg + USLEEPPLUS);
 				if (left_us >= USLEEPMIN)
 					gekko_usleep(info, left_us);
 			}
@@ -2574,9 +2580,9 @@ static void *compac_mine2(void *object)
 				info->work_usec_avg = wd;
 			else
 			{
-				// fast work times should override a slow avg
-				if (wd < (info->work_usec_avg / 3.0))
-					info->work_usec_avg  = wd;
+				// fast work times should have a higher effect
+				if (wd < (info->work_usec_avg / 2.0))
+					info->work_usec_avg = (info->work_usec_avg + wd) / 2.0;
 				else
 				{
 					// ignore extra long work times after we get a few
@@ -2591,33 +2597,23 @@ static void *compac_mine2(void *object)
 
 			info->work_usec_num++;
 
-			// don't delay work updates when doing busy work
 			if (last_was_busy)
 				last_was_busy = false;
-			else
-			{
-				diff_us = us_tdiff(&fin, &info->last_task);
-				// if we got here too fast, delay up to 0.5ms only
-				left_us = info->max_task_wait - diff_us;
-				if (left_us > 0)
-				{
-					left_us -= USLEEPMIN;
-					if (left_us >= USLEEPMIN && left_us < 500)
-						gekko_usleep(info, left_us);
-				}
-				else
-				{
+
 #if TUNE_CODE
-					// ran over by 10us or more
-					if (left_us <= -10)
-					{
-						info->over2num++;
-						info->over2amt -= left_us;
-					}
-#endif
+			diff_us = us_tdiff(&fin, &info->last_task);
+			// stats if we got here too fast ...
+			left_us = info->max_task_wait - diff_us;
+			if (left_us < 0)
+			{
+				// ran over by 10us or more
+				if (left_us <= -10)
+				{
+					info->over2num++;
+					info->over2amt -= left_us;
 				}
 			}
-
+#endif
 
 			if (opt_gekko_noboost)
 				work->pool->vmask = 0;
@@ -3445,6 +3441,7 @@ static bool compac_init(struct thr_info *thr)
 	// most should only take this long
 	info->ramp_time = MS_MINUTE_3;
 
+	info->ghrequire = GHREQUIRE;
 	info->freq_fail = 0.0;
 	info->hr_scale = 1.0;
 	info->usb_prop = 1000;
@@ -4134,6 +4131,9 @@ static struct api_data *compac_api_stats(struct cgpu_info *compac)
 	root = api_add_int64(root, "GHDiff", &info->gh.diffsum, true);
 	root = api_add_double(root, "GHGHs", &ghs, true);
 	mutex_unlock(&info->ghlock);
+	root = api_add_float(root, "Require", &info->ghrequire, true);
+	ghs = info->frequency * (double)(info->cores * info->chips) * info->ghrequire / 1.0e3;
+	root = api_add_double(root, "RequireGH", &ghs, true);
 
 	// info->job access must be under lock
 	// N.B. this is as at the last job sent, not 'now'
@@ -4468,12 +4468,13 @@ static char *compac_api_set(struct cgpu_info *compac, char *option, char *settin
 		{
 			snprintf(replybuf, siz, "reset freq: 0-1200 chip: N:0-800 target: 0-1200"
 						" lockfreq unlockfreq waitfactor: 0.01-2.0"
-						" usbprop: %d-1000", USLEEPMIN);
+						" usbprop: %d-1000 require: 0.0-0.8", USLEEPMIN);
 		}
 		else
 		{
 			snprintf(replybuf, siz, "reset freq: 0-1200 chip: N:0-800 target: 0-1200"
-						" lockfreq unlockfreq waitfactor: 0.01-2.0");
+						" lockfreq unlockfreq waitfactor: 0.01-2.0"
+						" require: 0.0-0.8");
 		}
                 return replybuf;
 	}
@@ -4607,6 +4608,22 @@ static char *compac_api_set(struct cgpu_info *compac, char *option, char *settin
 
 		return NULL;
 	}
+
+	// set ghrequire
+	if (strcasecmp(option, "require") == 0)
+	{
+		if (!setting || !*setting)
+		{
+			snprintf(replybuf, siz, "missing value");
+			return replybuf;
+		}
+
+		info->ghrequire = fbound(atof(setting), 0.0, 0.8);
+		compac_update_rates(compac);
+
+		return NULL;
+	}
+
 	snprintf(replybuf, siz, "Unknown option: %s", option);
 	return replybuf;
 }

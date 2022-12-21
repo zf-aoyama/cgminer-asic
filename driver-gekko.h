@@ -191,7 +191,7 @@ static int cur_attempt[] = { 0, -4, -8, -12 };
 #define GHNONCES 400
 
 // a loss of this much hash rate will reduce requested freq and reset
-#define GHREQUIRE 0.80
+#define GHREQUIRE 0.65
 
 // number of nonces needed before using as the rolling hash rate
 // N.B. 200Mhz ticket 16 GSF is around 2/sec
@@ -424,6 +424,7 @@ struct COMPAC_INFO {
 
 	pthread_mutex_t ghlock;			// Mutex for all access to gh
 	struct GEKKOHASH gh;			// running hash rate buffer
+	float ghrequire;			// Ratio of expected HR required (GHREQUIRE) 0.0-0.8
 	pthread_mutex_t joblock;		// Mutex for all access to jb
 	struct GEKKOJOB job;			// running job rate buffer
 
