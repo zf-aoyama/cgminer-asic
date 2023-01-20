@@ -708,7 +708,8 @@ function gekkochipestats($data)
 			continue;
 		}
 
-		if (!isset($values['Chips']))
+		// most likely not a gekko miner
+		if (!isset($values['Chips']) || !isset($values['Chip0FreqReply']))
 		{
 			$values['STATS'] = $num;
 			$ar['STATS'.$num] = $values;
