@@ -802,8 +802,8 @@ $gekkochipssum = array(
 			'GEN.DAM', 'SUMMARY.Difficulty Accepted')
 );
 $gekkochipsext = array(
- 'ESTATS' => array('xgen' => gekkochipestats,
-		'fmt' => gekkochipfmt),
+ 'ESTATS' => array('xgen' => 'gekkochipestats',
+		'fmt' => 'gekkochipfmt'),
  'SUMMARY+COIN' => array(
   'gen' => array('GHS av' => 'HtoG(SUMMARY.MHS av)',
 		'GHS 5m' => 'HtoG(SUMMARY.MHS 5m)',
