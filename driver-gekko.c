@@ -1342,7 +1342,7 @@ static void compac_update_rates(struct cgpu_info *compac)
 		info->nonce_expect = 0;
 	else
 	{
-		// expected seconds per nonce for PT_NONONCE
+		// expected ms per nonce for PT_NONONCE
 		info->nonce_expect = info->fullscan_ms * info->difficulty;
 		// BM1397 check is per miner, not per chip, fullscan_ms is sum of chips
 		if (info->asic_type != BM1397 && info->chips > 1)
