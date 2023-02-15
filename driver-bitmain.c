@@ -72,7 +72,7 @@ bool opt_bitmain_checkn2diff = false;
 #ifndef USE_ANT_S3
 char *opt_bitmain_dev;
 #endif
-char *opt_bitmain_voltage = BITMAIN_VOLTAGE_DEF;
+//char *opt_bitmain_voltage = BITMAIN_VOLTAGE_DEF;
 #endif
 
 
