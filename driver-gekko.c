@@ -4396,7 +4396,13 @@ static struct api_data *compac_api_stats(struct cgpu_info *compac)
 	uint64_t swt100 = stratum_work_time100;
 	cg_runlock(&swt_lock);
 
-	double sw_avg = (double)swt / (double)swc;
+	double sw_avg;
+
+	if (swc == 0)
+		sw_avg = 0.0;
+	else
+		sw_avg = (double)swt / (double)swc;
+
 	root = api_add_uint64(root, "SWCount", &swc, true);
 	root = api_add_double(root, "SWAvg", &sw_avg, true);
 	root = api_add_uint64(root, "SWMin", &swmin, true);
