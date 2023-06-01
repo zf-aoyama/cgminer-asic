@@ -226,6 +226,28 @@ static struct usb_intinfo gek2_ints[] = {
 
 #endif
 
+#ifdef USE_BITAXE
+// CP210X Devices
+static struct usb_epinfo gek1_epinfos[] = {
+	{ LIBUSB_TRANSFER_TYPE_BULK,	64,	EPI(1), 0, 0 },
+	{ LIBUSB_TRANSFER_TYPE_BULK,	64,	EPO(1), 0, 0 }
+};
+
+static struct usb_intinfo gek1_ints[] = {
+	USB_EPS(0, gek1_epinfos)
+};
+
+// FTDI Devices
+static struct usb_epinfo gek2_epinfos[] = {
+	{ LIBUSB_TRANSFER_TYPE_BULK,	64,	EPI(1), 0, 0 },
+	{ LIBUSB_TRANSFER_TYPE_BULK,	64,	EPO(2), 0, 0 }
+};
+static struct usb_intinfo gek2_ints[] = {
+	USB_EPS(0, gek2_epinfos)
+};
+
+#endif
+
 #ifdef USE_DRILLBIT
 // Drillbit Bitfury devices
 static struct usb_epinfo drillbit_int_epinfos[] = {
@@ -1074,6 +1096,32 @@ static struct usb_find_devices find_dev[] = {
 		.timeout = COMPAC_TIMEOUT_MS,
 		.latency = LATENCY_UNUSED,
 		INTINFO(gek2_ints) },
+	{
+		.drv = DRIVER_gekko,
+		.name = "GSF",
+		.ident = IDENT_GSF,
+		.idVendor = 0x0403,
+		.idProduct = 0x6015,
+		.iManufacturer = "GekkoScience",
+		.iProduct = "CompacF Bitcoin Miner",
+		.config = 1,
+		.timeout = COMPAC_TIMEOUT_MS,
+		.latency = LATENCY_UNUSED,
+		INTINFO(gek2_ints) },
+	{
+		.drv = DRIVER_gekko,
+		.name = "GSF",
+		.ident = IDENT_GSFM,
+		.idVendor = 0x0403,
+		.idProduct = 0x6015,
+		.iManufacturer = "GekkoScience",
+		.iProduct = "R909 Bitcoin Miner",
+		.config = 1,
+		.timeout = COMPAC_TIMEOUT_MS,
+		.latency = LATENCY_UNUSED,
+		INTINFO(gek2_ints) },
+#endif
+#ifdef USE_BITAXE
 	{
 		.drv = DRIVER_gekko,
 		.name = "GSF",

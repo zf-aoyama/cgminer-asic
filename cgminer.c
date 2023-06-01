@@ -139,6 +139,10 @@ char *curly = ":D";
 #include "driver-gekko.h"
 #endif
 
+#ifdef USE_BITAXE
+#include "driver-bitaxe.h"
+#endif
+
 #ifdef USE_HASHFAST
 #include "driver-hashfast.h"
 #endif
@@ -304,6 +308,41 @@ static char *opt_set_avalonm_freq;
 int opt_bet_clk = 0;
 #endif
 #ifdef USE_GEKKO
+char *opt_gekko_serial = NULL;
+bool opt_gekko_noboost = 0;
+bool opt_gekko_lowboost = 0;
+bool opt_gekko_gsc_detect = 0;
+bool opt_gekko_gsd_detect = 0;
+bool opt_gekko_gse_detect = 0;
+bool opt_gekko_gsh_detect = 0;
+bool opt_gekko_gsi_detect = 0;
+bool opt_gekko_gsf_detect = 0;
+bool opt_gekko_r909_detect = 0;
+float opt_gekko_gsc_freq = 150;
+float opt_gekko_gsd_freq = 100;
+float opt_gekko_gse_freq = 150;
+float opt_gekko_tune_up = 97;
+float opt_gekko_tune_down = 95;
+#if defined(__APPLE__)
+float opt_gekko_wait_factor = 0.3;
+#elif defined (WIN32)
+float opt_gekko_wait_factor = 0.4;
+#else
+float opt_gekko_wait_factor = 0.5;
+#endif
+float opt_gekko_step_freq = 6.25;
+int opt_gekko_gsh_freq = 100;
+int opt_gekko_gsi_freq = 550;
+int opt_gekko_gsf_freq = 200;
+int opt_gekko_r909_freq = 450;
+int opt_gekko_bauddiv = 0;
+int opt_gekko_gsh_vcore = 400;
+int opt_gekko_start_freq = 100;
+int opt_gekko_step_delay = 15;
+bool opt_gekko_mine2 = false; // gekko code ignores it
+int opt_gekko_tune2 = 0;
+#endif
+#ifdef USE_BITAXE
 char *opt_gekko_serial = NULL;
 bool opt_gekko_noboost = 0;
 bool opt_gekko_lowboost = 0;
@@ -2010,6 +2049,46 @@ static struct opt_table opt_config_table[] = {
 			set_int_0_to_9999, opt_show_intval, &opt_gekko_tune2,
 			"Tune up mine2 mins 30-9999, default 0=never"),
 #endif
+#ifdef USE_BITAXE
+	OPT_WITH_ARG("--gekko-serial",
+			 opt_set_charp, NULL, &opt_gekko_serial,
+			 "Detect GekkoScience Device by Serial Number"),
+	OPT_WITHOUT_ARG("--gekko-compacf-detect",
+			 opt_set_bool, &opt_gekko_gsf_detect,
+			 "Detect GekkoScience CompacF BM1397"),
+	OPT_WITH_ARG("--gekko-tune-down",
+		     set_float_0_to_500, opt_show_floatval, &opt_gekko_tune_down,
+		     "Set GekkoScience miner minimum hash quality, range 0-100"),
+	OPT_WITH_ARG("--gekko-tune-up",
+		     set_float_0_to_500, opt_show_floatval, &opt_gekko_tune_up,
+		     "Set GekkoScience miner ramping hash threshold, rante 0-99"),
+	OPT_WITH_ARG("--gekko-wait-factor",
+		     set_float_0_to_500, opt_show_floatval, &opt_gekko_wait_factor,
+		     "Set GekkoScience miner task send wait factor, range 0.01-2.00"),
+	OPT_WITH_ARG("--gekko-bauddiv",
+		     set_int_0_to_9999, opt_show_intval, &opt_gekko_bauddiv,
+		     "Set GekkoScience BM1387 baud divider {0: auto, 1: 1.5M, 7: 375K, 13: 214K, 25: 115K}"),
+	OPT_WITH_ARG("--gekko-compacf-freq",
+		     set_int_0_to_9999, opt_show_intval, &opt_gekko_gsf_freq,
+		     "Set GekkoScience CompacF BM1397 frequency in MHz, range 100-800"),
+	OPT_WITH_ARG("--gekko-r909-freq",
+		     set_int_0_to_9999, opt_show_intval, &opt_gekko_r909_freq,
+		     "Set GekkoScience Terminus R909 BM1397 frequency in MHz, range 100-800"),
+	OPT_WITH_ARG("--gekko-start-freq",
+		     set_int_0_to_9999, opt_show_intval, &opt_gekko_start_freq,
+                     "Ramp start frequency MHz 25-500"),
+	OPT_WITH_ARG("--gekko-step-freq",
+		     set_float_0_to_500, opt_show_intval, &opt_gekko_step_freq,
+		     "Ramp frequency step MHz 1-100"),
+	OPT_WITH_ARG("--gekko-step-delay",
+		     set_int_0_to_9999, opt_show_intval, &opt_gekko_step_delay,
+		     "Ramp step interval range 1-600"),
+	OPT_WITHOUT_ARG("--gekko-mine2",
+			opt_set_bool, &opt_gekko_mine2, opt_hidden), // ignored
+	OPT_WITH_ARG("--gekko-tune2",
+			set_int_0_to_9999, opt_show_intval, &opt_gekko_tune2,
+			"Tune up mine2 mins 30-9999, default 0=never"),
+#endif
 #ifdef HAVE_LIBCURL
 	OPT_WITH_ARG("--btc-address",
 		     opt_set_charp, NULL, &opt_btc_address,
@@ -2642,6 +2721,9 @@ static char *opt_verusage_and_exit(const char *extra)
 #endif
 #ifdef USE_GEKKO
 		"gekko "
+#endif
+#ifdef USE_BITAXE
+		"bitaxe "
 #endif
 #ifdef USE_HASHFAST
 		"hashfast "
@@ -11087,7 +11169,7 @@ begin_bench:
 	if (total_control_threads != 8)
 		early_quit(1, "incorrect total_control_threads (%d) should be 8", total_control_threads);
 
-#ifdef USE_GEKKO
+#if defined(USE_GEKKO) || defined(USE_BITAXE)
 	set_lowprio();
 #else
 	set_highprio();

@@ -1083,6 +1083,34 @@ extern int opt_gekko_start_freq;
 extern int opt_gekko_step_delay;
 extern int opt_gekko_tune2;
 #endif
+#ifdef USE_BITAXE
+extern char *opt_gekko_serial;
+extern bool opt_gekko_noboost;
+extern bool opt_gekko_lowboost;
+extern bool opt_gekko_gsc_detect;
+extern bool opt_gekko_gsd_detect;
+extern bool opt_gekko_gse_detect;
+extern bool opt_gekko_gsh_detect;
+extern bool opt_gekko_gsi_detect;
+extern bool opt_gekko_gsf_detect;
+extern bool opt_gekko_r909_detect;
+extern float opt_gekko_gsc_freq;
+extern float opt_gekko_gsd_freq;
+extern float opt_gekko_gse_freq;
+extern float opt_gekko_tune_down;
+extern float opt_gekko_tune_up;
+extern float opt_gekko_wait_factor;
+extern float opt_gekko_step_freq;
+extern int opt_gekko_bauddiv;
+extern int opt_gekko_gsh_freq;
+extern int opt_gekko_gsi_freq;
+extern int opt_gekko_gsf_freq;
+extern int opt_gekko_r909_freq;
+extern int opt_gekko_gsh_vcore;
+extern int opt_gekko_start_freq;
+extern int opt_gekko_step_delay;
+extern int opt_gekko_tune2;
+#endif
 #ifdef USE_KLONDIKE
 extern char *opt_klondike_options;
 #endif

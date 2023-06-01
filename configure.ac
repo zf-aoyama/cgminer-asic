@@ -399,6 +399,19 @@ if test "x$gekko" = xyes; then
 fi
 AM_CONDITIONAL([HAS_GEKKO], [test x$gekko = xyes])
 
+bitaxe="no"
+
+AC_ARG_ENABLE([bitaxe],
+	[AC_HELP_STRING([--enable-bitaxe],[Compile support for Bitaxe (default disabled)])],
+	[bitaxe=$enableval]
+	)
+if test "x$bitaxe" = xyes; then
+	AC_DEFINE([USE_BITAXE], [1], [Defined to 1 if Bitaxe support is wanted])
+	AC_DEFINE([USE_VMASK], [1], [Defined to 1 if version mask rolling is wanted])
+	drivercount=x$drivercount
+fi
+AM_CONDITIONAL([HAS_BITAXE], [test x$bitaxe = xyes])
+
 cointerra="no"
 
 AC_ARG_ENABLE([cointerra],
