@@ -1,4 +1,5 @@
-This is a multi-threaded multi-pool FPGA and ASIC miner for bitcoin.
+This is a multi-threaded multi-pool FPGA and ASIC miner for bitcoin. 
+This fork has been modified to add a driver for the bitaxe miner. https://github.com/skot/bitaxe
 
 This code is provided entirely free of charge by it's programmers.
 
@@ -33,7 +34,7 @@ FAQ
 
 GIT TREE:
 
-https://github.com/kanoi/cgminer
+https://github.com/skot/cgminer-bitaxe
 
 SEE ALSO API-README, ASIC-README and FGPA-README FOR MORE INFORMATION ON EACH.
 
@@ -146,6 +147,7 @@ CGMiner specific configuration options:
   --enable-drillbit       Compile support for Drillbit BitFury ASICs (default
                           disabled)
   --enable-gekko          Compile support for GekkoScience (default disabled)
+  --enable-bitaxe         Compile support for Bitaxe (default disabled)
   --enable-hashfast       Compile support for Hashfast (default disabled)
   --enable-icarus         Compile support for Icarus (default disabled)
   --enable-klondike       Compile support for Klondike (default disabled)
