@@ -133,6 +133,13 @@ This also supports the bitshopperde devices.
 GekkoScience come up as GSC, GSD, GSE, GSF, GSH, GSI
 
 
+Bitaxe devices
+
+Bitaxe devices need the --enable-bitaxe option when compiling cgminer.
+
+GekkoScience come up as AX1, AX2
+
+
 HALONG devices
 
 HALONG Dragonmint T1 devices will come up as DT1.

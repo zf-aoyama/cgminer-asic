@@ -1137,11 +1137,23 @@ static struct usb_find_devices find_dev[] = {
 	{
 		.drv = DRIVER_gekko,
 		.name = "GSF",
-		.ident = IDENT_GSFM,
+		.ident = IDENT_GSF,
 		.idVendor = 0x0403,
-		.idProduct = 0x6015,
-		.iManufacturer = "GekkoScience",
-		.iProduct = "R909 Bitcoin Miner",
+		.idProduct = 0x6015, //jim.sh
+		.iManufacturer = "FTDI",
+		.iProduct = "FT230X Basic UART", //jim.sh
+		.config = 1,
+		.timeout = COMPAC_TIMEOUT_MS,
+		.latency = LATENCY_UNUSED,
+		INTINFO(gek2_ints) },
+	{
+		.drv = DRIVER_gekko,
+		.name = "GSF",
+		.ident = IDENT_GSF,
+		.idVendor = 0x0403,
+		.idProduct = 0x6001, //FT232R
+		.iManufacturer = "FTDI",
+		.iProduct = "FT232R USB UART", //FT232R
 		.config = 1,
 		.timeout = COMPAC_TIMEOUT_MS,
 		.latency = LATENCY_UNUSED,

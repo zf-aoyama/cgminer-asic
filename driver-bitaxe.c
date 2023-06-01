@@ -4654,8 +4654,8 @@ static char *compac_api_set(struct cgpu_info *compac, char *option, char *settin
 
 struct device_drv gekko_drv = {
 	.drv_id              = DRIVER_gekko,
-	.dname               = "GekkoScience",
-	.name                = "GSX",
+	.dname               = "Bitaxe",
+	.name                = "AXX",
 	.hash_work           = hash_queued_work,
 	.get_api_stats       = compac_api_stats,
 	.get_statline_before = compac_statline,
