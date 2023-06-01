@@ -382,6 +382,18 @@ Options for both config file and command line:
 --gekko-tune-down   Set GekkoScience miner minimum hash quality, range 0-100
 --gekko-tune-up     Set GekkoScience miner ramping hash threshold, range 0-99
 --gekko-wait-factor Set GekkoScience miner task send wait factor, range 0.01-2.00
+--bitaxe-serial     Detect Bitaxe by Serial Number"
+--bitaxe-compacf-detect Detect Bitaxe BM1397
+--bitaxe-tune-down  Set Bitaxe miner minimum hash quality, range 0-100
+--bitaxe-tune-up    Set Bitaxe miner ramping hash threshold, rante 0-99
+--bitaxe-wait-factor Set Bitaxe miner task send wait factor, range 0.01-2.00
+--bitaxe-bauddiv    Set Bitaxe BM1387 baud divider {0: auto, 1: 1.5M, 7: 375K, 13: 214K, 25: 115K}
+--bitaxe-freq       Set Bitaxe BM1397 frequency in MHz, range 100-800
+--bitaxe-start-freq Ramp start frequency MHz 25-500
+--bitaxe-step-freq  Ramp frequency step MHz 1-100
+--bitaxe-step-delay Ramp step interval range 1-600
+--bitaxe-mine2
+--bitaxe-tune2      Tune up mine2 mins 30-9999, default 0=never
 --hfa-hash-clock <arg> Set hashfast clock speed (default: 550)
 --hfa-fail-drop <arg> Set how many MHz to drop clockspeed each failure on an overlocked hashfast device (default: 10)
 --hfa-fan <arg>     Set fanspeed percentage for hashfast, single value or range (default: 10-85)
