@@ -1110,6 +1110,18 @@ static struct usb_find_devices find_dev[] = {
 		INTINFO(gek2_ints) },
 	{
 		.drv = DRIVER_gekko,
+		.name = "AXE",
+		.ident = IDENT_GSF,
+		.idVendor = 0x0403,
+		.idProduct = 0x6001, //FT232R
+		.iManufacturer = "FTDI",
+		.iProduct = "FT232R USB UART", //FT232R
+		.config = 1,
+		.timeout = COMPAC_TIMEOUT_MS,
+		.latency = LATENCY_UNUSED,
+		INTINFO(gek2_ints) },
+	{
+		.drv = DRIVER_gekko,
 		.name = "GSF",
 		.ident = IDENT_GSFM,
 		.idVendor = 0x0403,
@@ -1123,20 +1135,8 @@ static struct usb_find_devices find_dev[] = {
 #endif
 #ifdef USE_BITAXE
 	{
-		.drv = DRIVER_gekko,
-		.name = "GSF",
-		.ident = IDENT_GSF,
-		.idVendor = 0x0403,
-		.idProduct = 0x6015,
-		.iManufacturer = "GekkoScience",
-		.iProduct = "CompacF Bitcoin Miner",
-		.config = 1,
-		.timeout = COMPAC_TIMEOUT_MS,
-		.latency = LATENCY_UNUSED,
-		INTINFO(gek2_ints) },
-	{
-		.drv = DRIVER_gekko,
-		.name = "GSF",
+		.drv = DRIVER_bitaxe,
+		.name = "AXE",
 		.ident = IDENT_GSF,
 		.idVendor = 0x0403,
 		.idProduct = 0x6015, //jim.sh
@@ -1147,8 +1147,8 @@ static struct usb_find_devices find_dev[] = {
 		.latency = LATENCY_UNUSED,
 		INTINFO(gek2_ints) },
 	{
-		.drv = DRIVER_gekko,
-		.name = "GSF",
+		.drv = DRIVER_bitaxe,
+		.name = "AXE",
 		.ident = IDENT_GSF,
 		.idVendor = 0x0403,
 		.idProduct = 0x6001, //FT232R
@@ -4020,6 +4020,7 @@ void usb_cleanup(void)
 			case DRIVER_cointerra:
 			case DRIVER_drillbit:
 			case DRIVER_gekko:
+			case DRIVER_bitaxe:
 			case DRIVER_modminer:
 			case DRIVER_icarus:
 			case DRIVER_avalon:

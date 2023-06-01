@@ -200,7 +200,7 @@ static const char *DEVICECODE = ""
 			"GSX "
 #endif
 #ifdef USE_BITAXE
-			"GSX "
+			"AXX "
 #endif
 #ifdef USE_HASHFAST
 			"HFA "

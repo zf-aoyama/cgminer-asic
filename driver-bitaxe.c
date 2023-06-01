@@ -3774,7 +3774,7 @@ static struct cgpu_info *compac_detect_one(struct libusb_device *dev, struct usb
 	uint32_t baudrate = CP210X_DATA_BAUD;
 	unsigned int bits = CP210X_BITS_DATA_8 | CP210X_BITS_PARITY_MARK;
 
-	compac = usb_alloc_cgpu(&gekko_drv, 1);
+	compac = usb_alloc_cgpu(&bitaxe_drv, 1);
 
 	if (!usb_init(compac, dev, found))
 	{
@@ -3793,6 +3793,8 @@ static struct cgpu_info *compac_detect_one(struct libusb_device *dev, struct usb
 	compac->device_data = (void *)info;
 
 	info->ident = usb_ident(compac);
+
+	applog(LOG_INFO, "Yo: %d\n", info->ident);
 
 	if (opt_gekko_gsc_detect || opt_gekko_gsd_detect || opt_gekko_gse_detect
 	||  opt_gekko_gsh_detect || opt_gekko_gsi_detect || opt_gekko_gsf_detect
@@ -3920,9 +3922,10 @@ static struct cgpu_info *compac_detect_one(struct libusb_device *dev, struct usb
 	return compac;
 }
 
-static void compac_detect(bool __maybe_unused hotplug)
+static void bitaxe_detect(bool __maybe_unused hotplug)
 {
-	usb_detect(&gekko_drv, compac_detect_one);
+	applog(LOG_INFO, "axe compac_detect()");
+	usb_detect(&bitaxe_drv, compac_detect_one);
 }
 
 static bool compac_prepare(struct thr_info *thr)
@@ -4664,15 +4667,15 @@ static char *compac_api_set(struct cgpu_info *compac, char *option, char *settin
 	return replybuf;
 }
 
-struct device_drv gekko_drv = {
-	.drv_id              = DRIVER_gekko,
+struct device_drv bitaxe_drv = {
+	.drv_id              = DRIVER_bitaxe,
 	.dname               = "Bitaxe",
-	.name                = "AXX",
+	.name                = "AXE",
 	.hash_work           = hash_queued_work,
 	.get_api_stats       = compac_api_stats,
 	.get_statline_before = compac_statline,
 	.set_device	     = compac_api_set,
-	.drv_detect          = compac_detect,
+	.drv_detect          = bitaxe_detect,
 	.scanwork            = compac_scanwork,
 	.flush_work          = compac_flush_work,
 	.update_work         = compac_update_work,
