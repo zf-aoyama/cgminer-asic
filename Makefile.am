@@ -219,3 +219,7 @@ endif
 if HAS_GEKKO
 cgminer_SOURCES += driver-gekko.c driver-gekko.h
 endif
+
+if HAS_BITAXE
+cgminer_SOURCES += driver-bitaxe.c driver-bitaxe.h
+endif
