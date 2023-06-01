@@ -1530,20 +1530,32 @@ static void compac_toggle_reset(struct cgpu_info *compac)
 	usb_transfer(compac, FTDI_TYPE_OUT, FTDI_REQUEST_RESET, FTDI_VALUE_PURGE_TX, info->interface, C_PURGETX);
 	usb_transfer(compac, FTDI_TYPE_OUT, FTDI_REQUEST_RESET, FTDI_VALUE_PURGE_RX, info->interface, C_PURGERX);
 
-	usb_val = (FTDI_BITMODE_CBUS << 8) | 0xF2; // low byte: bitmask - 1111 0010 - CB1(HI)
-	usb_transfer(compac, FTDI_TYPE_OUT, FTDI_REQUEST_BITMODE, usb_val, info->interface, C_SETMODEM);
-	gekko_usleep(info, MS2US(30));
+	// usb_val = (FTDI_BITMODE_CBUS << 8) | 0xF2; // low byte: bitmask - 1111 0010 - CB1(HI)
+	// usb_transfer(compac, FTDI_TYPE_OUT, FTDI_REQUEST_BITMODE, usb_val, info->interface, C_SETMODEM);
 
-	usb_val = (FTDI_BITMODE_CBUS << 8) | 0xF0; // low byte: bitmask - 1111 0000 - CB1(LO)
-	usb_transfer(compac, FTDI_TYPE_OUT, FTDI_REQUEST_BITMODE, usb_val, info->interface, C_SETMODEM);
+	//usb_transfer command to set the RTS pin low
+	usb_transfer(compac, FTDI_TYPE_OUT, FTDI_REQUEST_MODEM, FTDI_SETRTS_LOW, info->interface, C_SETMODEM);
+
+	cgsleep_ms(30);
+
+	// usb_val = (FTDI_BITMODE_CBUS << 8) | 0xF0; // low byte: bitmask - 1111 0000 - CB1(LO)
+	// usb_transfer(compac, FTDI_TYPE_OUT, FTDI_REQUEST_BITMODE, usb_val, info->interface, C_SETMODEM);
+
+	//usb_transfer command to set the RTS pin high
+	usb_transfer(compac, FTDI_TYPE_OUT, FTDI_REQUEST_MODEM, FTDI_SETRTS_HIGH, info->interface, C_SETMODEM);
+
 	if (info->asic_type == BM1397)
-		gekko_usleep(info, MS2US(1000));
+		cgsleep_ms(1000);
 	else
-		gekko_usleep(info, MS2US(30));
+		cgsleep_ms(30);
 
-	usb_val = (FTDI_BITMODE_CBUS << 8) | 0xF2; // low byte: bitmask - 1111 0010 - CB1(HI)
-	usb_transfer(compac, FTDI_TYPE_OUT, FTDI_REQUEST_BITMODE, usb_val, info->interface, C_SETMODEM);
-	gekko_usleep(info, MS2US(200));
+	// usb_val = (FTDI_BITMODE_CBUS << 8) | 0xF2; // low byte: bitmask - 1111 0010 - CB1(HI)
+	// usb_transfer(compac, FTDI_TYPE_OUT, FTDI_REQUEST_BITMODE, usb_val, info->interface, C_SETMODEM);
+
+	//usb_transfer command to set the RTS pin low
+	usb_transfer(compac, FTDI_TYPE_OUT, FTDI_REQUEST_MODEM, FTDI_SETRTS_LOW, info->interface, C_SETMODEM);
+
+	cgsleep_ms(200);
 
 	cgtime(&info->last_reset);
 }
