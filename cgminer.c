@@ -4490,7 +4490,7 @@ static inline struct pool *select_pool(void)
 	if (!pool)
 		pool = cp;
 out:
-	applog(LOG_DEBUG, "Selecting pool %d for work", pool->pool_no);
+	//applog(LOG_DEBUG, "Selecting pool %d for work", pool->pool_no);
 	return pool;
 }
 
@@ -5517,7 +5517,7 @@ void _discard_work(struct work **workptr, const char *file, const char *func, co
 			work->pool->works--;
 		}
 		total_discarded++;
-		applog(LOG_DEBUG, "Discarded work");
+		//applog(LOG_DEBUG, "Discarded work");
 	} else
 		applog(LOG_DEBUG, "Discarded cloned or rolled work");
 	_free_work(workptr, file, func, line);
@@ -5859,7 +5859,7 @@ static bool hash_push(struct work *work)
 
 static void _stage_work(struct work *work)
 {
-	applog(LOG_DEBUG, "Pushing work from pool %d to hash queue", work->pool->pool_no);
+	//applog(LOG_DEBUG, "Pushing work from pool %d to hash queue", work->pool->pool_no);
 	work->work_block = work_block;
 	test_work_current(work);
 	work->pool->works++;
@@ -6890,8 +6890,8 @@ static void hashmeter(int thr_id, uint64_t hashes_done)
 		device_tdiff = tdiff(&total_tv_end, &cgpu->last_message_tv);
 		copy_time(&cgpu->last_message_tv, &total_tv_end);
 		thr_mhs = (double)hashes_done / device_tdiff / 1000000;
-		applog(LOG_DEBUG, "[thread %d: %"PRIu64" hashes, %.1f mhash/sec]",
-		       thr_id, hashes_done, thr_mhs);
+		// applog(LOG_DEBUG, "[thread %d: %"PRIu64" hashes, %.1f mhash/sec]",
+		//        thr_id, hashes_done, thr_mhs);
 		hashes_done /= 1000000;
 
 		mutex_lock(&hash_lock);
@@ -7535,7 +7535,7 @@ static bool setup_gbt_solo(CURL *curl, struct pool *pool)
 	if (opt_debug) {
 		char *cb = bin2hex(pool->coinbase, pool->coinbase_len);
 
-		applog(LOG_DEBUG, "Pool %d coinbase %s", pool->pool_no, cb);
+		//applog(LOG_DEBUG, "Pool %d coinbase %s", pool->pool_no, cb);
 		free(cb);
 	}
 out:
@@ -7905,7 +7905,7 @@ void set_target(unsigned char *dest_target, double diff)
 	if (opt_debug) {
 		char *htarget = bin2hex(target, 32);
 
-		applog(LOG_DEBUG, "Generated target %s", htarget);
+		//applog(LOG_DEBUG, "Generated target %s", htarget);
 		free(htarget);
 	}
 	cg_memcpy(dest_target, target, 32);
@@ -8045,18 +8045,18 @@ static void gen_stratum_work(struct pool *pool, struct work *work)
 	work->ntime = strdup(pool->ntime);
 	cg_runlock(&pool->data_lock);
 
-	if (opt_debug) {
-		char *header, *merkle_hash;
+	// if (opt_debug) {
+	// 	char *header, *merkle_hash;
 
-		header = bin2hex(work->data, 112);
-		merkle_hash = bin2hex((const unsigned char *)merkle_root, 32);
-		applog(LOG_DEBUG, "Generated stratum merkle %s", merkle_hash);
-		applog(LOG_DEBUG, "Generated stratum header %s", header);
-		applog(LOG_DEBUG, "Work job_id %s nonce2 %"PRIu64" ntime %s", work->job_id,
-		       work->nonce2, work->ntime);
-		free(header);
-		free(merkle_hash);
-	}
+	// 	header = bin2hex(work->data, 112);
+	// 	merkle_hash = bin2hex((const unsigned char *)merkle_root, 32);
+	// 	applog(LOG_DEBUG, "Generated stratum merkle %s", merkle_hash);
+	// 	applog(LOG_DEBUG, "Generated stratum header %s", header);
+	// 	applog(LOG_DEBUG, "Work job_id %s nonce2 %"PRIu64" ntime %s", work->job_id,
+	// 	       work->nonce2, work->ntime);
+	// 	free(header);
+	// 	free(merkle_hash);
+	// }
 
 	calc_midstate(pool, work);
 	set_target(work->target, work->sdiff);
@@ -8268,7 +8268,7 @@ struct work *get_work(struct thr_info *thr, const int thr_id)
 	time_t diff_t;
 
 	thread_reportout(thr);
-	applog(LOG_DEBUG, "Popping work from get queue to get work");
+	//applog(LOG_DEBUG, "Popping work from get queue to get work");
 	diff_t = time(NULL);
 	while (!work) {
 		work = hash_pop(true);
@@ -8285,7 +8285,7 @@ struct work *get_work(struct thr_info *thr, const int thr_id)
 		applog(LOG_DEBUG, "Get work blocked for %d seconds", (int)diff_t);
 		cgpu->last_device_valid_work += diff_t;
 	}
-	applog(LOG_DEBUG, "Got work from get queue to get work for thread %d", thr_id);
+	//applog(LOG_DEBUG, "Got work from get queue to get work for thread %d", thr_id);
 
 	work->thr_id = thr_id;
 	if (opt_benchmark)
@@ -8523,8 +8523,8 @@ bool submit_noffset_nonce(struct thr_info *thr, struct work *work_in, uint32_t n
 	ret = true;
 	if (!fulltest(work->hash, work->target)) {
 		free_work(work);
-		applog(LOG_INFO, "%s %d: Share above target", thr->cgpu->drv->name,
-		       thr->cgpu->device_id);
+		// applog(LOG_INFO, "%s %d: Share above target", thr->cgpu->drv->name,
+		//        thr->cgpu->device_id);
 		goto  out;
 	}
 	submit_work_async(work);
@@ -11223,7 +11223,7 @@ begin_bench:
 		if (pool->has_stratum) {
 			if (opt_gen_stratum_work) {
 				gen_stratum_work(pool, work);
-				applog(LOG_DEBUG, "Generated stratum work");
+				//applog(LOG_DEBUG, "Generated stratum work");
 				stage_work(work);
 			}
 			continue;

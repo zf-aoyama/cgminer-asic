@@ -3796,8 +3796,6 @@ static struct cgpu_info *compac_detect_one(struct libusb_device *dev, struct usb
 
 	info->ident = usb_ident(compac);
 
-	applog(LOG_INFO, "Yo: %d\n", info->ident);
-
 	if (opt_gekko_gsc_detect || opt_gekko_gsd_detect || opt_gekko_gse_detect
 	||  opt_gekko_gsh_detect || opt_gekko_gsi_detect || opt_gekko_gsf_detect
 	||  opt_gekko_r909_detect)

@@ -1105,24 +1105,24 @@ bool fulltest(const unsigned char *hash, const unsigned char *target)
 		}
 	}
 
-	if (opt_debug) {
-		unsigned char hash_swap[32], target_swap[32];
-		char *hash_str, *target_str;
+	// if (opt_debug) {
+	// 	unsigned char hash_swap[32], target_swap[32];
+	// 	char *hash_str, *target_str;
 
-		swab256(hash_swap, hash);
-		swab256(target_swap, target);
-		hash_str = bin2hex(hash_swap, 32);
-		target_str = bin2hex(target_swap, 32);
+	// 	swab256(hash_swap, hash);
+	// 	swab256(target_swap, target);
+	// 	hash_str = bin2hex(hash_swap, 32);
+	// 	target_str = bin2hex(target_swap, 32);
 
-		applog(LOG_DEBUG, " Proof: %s\nTarget: %s\nTrgVal? %s",
-			hash_str,
-			target_str,
-			rc ? "YES (hash <= target)" :
-			     "no (false positive; hash > target)");
+	// 	applog(LOG_DEBUG, " Proof: %s\nTarget: %s\nTrgVal? %s",
+	// 		hash_str,
+	// 		target_str,
+	// 		rc ? "YES (hash <= target)" :
+	// 		     "no (false positive; hash > target)");
 
-		free(hash_str);
-		free(target_str);
-	}
+	// 	free(hash_str);
+	// 	free(target_str);
+	// }
 
 	return rc;
 }
@@ -1850,8 +1850,8 @@ bool stratum_send(struct pool *pool, char *s, ssize_t len)
 {
 	enum send_ret ret = SEND_INACTIVE;
 
-	if (opt_protocol)
-		applog(LOG_DEBUG, "SEND: %s", s);
+	//if (opt_protocol)
+	applog(LOG_DEBUG, "SEND: %s", s);
 
 	mutex_lock(&pool->stratum_lock);
 	if (pool->stratum_active)
@@ -2443,7 +2443,7 @@ static bool parse_notify(struct pool *pool, json_t *val)
 
 		if (opt_decode)
 			decode_exit(pool, cb);
-		applog(LOG_DEBUG, "Pool %d coinbase %s", pool->pool_no, cb);
+		//applog(LOG_DEBUG, "Pool %d coinbase %s", pool->pool_no, cb);
 		free(cb);
 	}
 out_unlock:
@@ -2653,6 +2653,10 @@ bool parse_method(struct pool *pool, char *s)
 	json_error_t err;
 	bool ret = false;
 	char *buf;
+
+	//debug the received json
+	printf("Pool %d json: %s\n", pool->pool_no, s);
+	applog(LOG_DEBUG, "Pool %d json: %s", pool->pool_no, s);
 
 	if (!s)
 		goto out;

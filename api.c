@@ -4937,7 +4937,7 @@ void api(int api_thr_id)
 	isjoin = false;
 
 	if (!opt_api_listen) {
-		applog(LOG_DEBUG, "API not running%s", UNAVAILABLE);
+		//applog(LOG_DEBUG, "API not running%s", UNAVAILABLE);
 		free(apisock);
 		return;
 	}

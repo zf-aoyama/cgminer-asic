@@ -2765,8 +2765,8 @@ static bool usb_check_device(struct device_drv *drv, struct libusb_device *dev, 
 	}
 
 	if (desc.idVendor != look->idVendor || desc.idProduct != look->idProduct) {
-		applog(LOG_DEBUG, "%s looking for %s %04x:%04x but found %04x:%04x instead",
-			drv->name, look->name, look->idVendor, look->idProduct, desc.idVendor, desc.idProduct);
+		// applog(LOG_DEBUG, "%s looking for %s %04x:%04x but found %04x:%04x instead",
+		// 	drv->name, look->name, look->idVendor, look->idProduct, desc.idVendor, desc.idProduct);
 
 		return false;
 	}
