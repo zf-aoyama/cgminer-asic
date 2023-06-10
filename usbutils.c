@@ -3376,11 +3376,11 @@ err_retry:
 	STATS_TIMEVAL(&tv_finish);
 	USB_STATS(cgpu, &tv_start, &tv_finish, err, mode, cmd, seq, timeout);
 
-	if (err < 0) {
-		applog(LOG_DEBUG, "%s%i: %s (amt=%d err=%d ern=%d)",
-				cgpu->drv->name, cgpu->device_id,
-				usb_cmdname(cmd), *transferred, err, errn);
-	}
+	// if (err < 0) {
+	// 	applog(LOG_DEBUG, "%s%i: %s (amt=%d err=%d ern=%d)",
+	// 			cgpu->drv->name, cgpu->device_id,
+	// 			usb_cmdname(cmd), *transferred, err, errn);
+	// }
 
 	if (err == LIBUSB_ERROR_PIPE) {
 		int pipeerr, retries = 0;

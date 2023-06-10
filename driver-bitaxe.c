@@ -3005,6 +3005,8 @@ applog(LOG_ERR, " [%02x %02x %02x %02x %02x %02x %02x %02x]",
 	rx[8], rx[9], rx[10], rx[11], rx[12], rx[13], rx[14], rx[15]);
 #endif
 
+			dumpbuffer(compac, LOG_DEBUG, "RX", (unsigned char *)rx, read_bytes);
+
 			// rubbish - skip over it to next 0xaa
 			if (rx[0] != 0xaa || rx[1] != 0x55)
 			{
