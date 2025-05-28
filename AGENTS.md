@@ -21,3 +21,7 @@
 ./configure --enable-bitaxe
 make -j"$(nproc)"
 ```
+
+## Important Notes
+
+1. Always log with stdout and stderr combined into a single stream.
