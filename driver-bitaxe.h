@@ -47,9 +47,10 @@ enum miner_state {
 };
 
 enum miner_asic {
-	BM1384 = 1,
-	BM1387,
-	BM1397
+        BM1384 = 1,
+        BM1387,
+        BM1397,
+        BM1370
 };
 
 enum plateau_type {
