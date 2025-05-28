@@ -13,3 +13,11 @@
 
 1. Feel free to consult, copy from, or modify the code in `cgminer-asic/reference/` (including `ESP-Miner/` and `bitaxeGamma/`) whenever it helps your implementation or refactoring work.
 2. Apply your functional changes primarily to the files under `cgminer-asic/` itself, keeping the reference code in sync only when necessary.
+
+## Testing method
+
+```
+./autogen.sh
+./configure --enable-bitaxe
+make -j"$(nproc)"
+```
