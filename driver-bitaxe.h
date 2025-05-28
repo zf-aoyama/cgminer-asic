@@ -47,9 +47,10 @@ enum miner_state {
 };
 
 enum miner_asic {
-	BM1384 = 1,
-	BM1387,
-	BM1397
+        BM1384 = 1,
+        BM1387,
+        BM1397,
+        BM1370
 };
 
 enum plateau_type {
@@ -176,6 +177,13 @@ static int cur_attempt[] = { 0, -4, -8, -12 };
 // BM1397 registers
 #define BM1397FREQ 0x08
 #define BM1397TICKET 0x14
+
+/* BM1370 PLL defaults and reference clock */
+#define BM1370_REF_FREQ 25.0
+#define BM1370_FB_DEFAULT 0xA0
+#define BM1370_REFD_DEFAULT 2
+#define BM1370_PD1_DEFAULT 5
+#define BM1370_PD2_DEFAULT 2
 
 #define GHNUM (60*5)
 #define GHOFF(n) (((n) + GHNUM) % GHNUM)

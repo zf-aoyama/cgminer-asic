@@ -13,6 +13,7 @@
 #include "crc.h"
 #include "compat.h"
 #include <unistd.h>
+#include <math.h>
 
 #ifdef __GNUC__
 #if __GNUC__ >= 7
@@ -39,6 +40,10 @@ static uint8_t dev_init_count[0xffff] = {0};
 static uint8_t *init_count;
 static uint32_t stat_len;
 static uint32_t chip_max;
+
+/* BM1370 command templates */
+static const unsigned char BITAXE_BM1370_FREQ_PING[]  = {0x52, 0x05, 0x00, 0x08, 0x00};
+static const unsigned char BITAXE_BM1370_PLL_WRITE[] = {0x51, 0x09, 0x00, 0x08, 0x40, BM1370_FB_DEFAULT, BM1370_REFD_DEFAULT, 0x00, 0x00};
 
 #define MS2US(_n) ((_n) * 1000)
 
@@ -232,12 +237,12 @@ static void compac_send2(struct cgpu_info *compac, unsigned char *req_tx, uint32
 
 	// leave original buffer intact
 
-	if (info->asic_type == BM1397)
-	{
-		info->cmd[0] = 0x55;
-		info->cmd[1] = 0xAA;
-		off = 2;
-	}
+       if (info->asic_type == BM1397 || info->asic_type == BM1370)
+       {
+               info->cmd[0] = 0x55;
+               info->cmd[1] = 0xAA;
+               off = 2;
+       }
 
 	for (i = 0; i < bytes; i++)
 		info->cmd[i+off] = req_tx[i];
@@ -307,13 +312,13 @@ static void ping_freq(struct cgpu_info *compac, int asic)
 	struct COMPAC_INFO *info = compac->device_data;
 	bool ping = false;
 
-	if (info->asic_type == BM1397)
-	{
-		unsigned char pingall[] = {0x52, 0x05, 0x00, BM1397FREQ, 0x00};
-		compac_send2(compac, pingall, sizeof(pingall), 8 * sizeof(pingall) - 8, "pingfreq");
-		ping = true;
-	}
-	else if (info->asic_type == BM1387)
+       if (info->asic_type == BM1397)
+       {
+               unsigned char pingall[] = {0x52, 0x05, 0x00, BM1397FREQ, 0x00};
+               compac_send2(compac, pingall, sizeof(pingall), 8 * sizeof(pingall) - 8, "pingfreq");
+               ping = true;
+       }
+       else if (info->asic_type == BM1387)
 	{
 		unsigned char buffer[] = {0x44, 0x05, 0x00, 0x0C, 0x00};  // PLL_PARAMETER
 		buffer[2] = (0x100 / info->chips) * asic;
@@ -324,9 +329,16 @@ static void ping_freq(struct cgpu_info *compac, int asic)
 	{
 		unsigned char buffer[] = {0x04, 0x00, 0x04, 0x00};
 		buffer[1] = (0x100 / info->chips) * asic;
-		compac_send(compac, buffer, sizeof(buffer), 8 * sizeof(buffer) - 5);
-		ping = true;
-	}
+               compac_send(compac, buffer, sizeof(buffer), 8 * sizeof(buffer) - 5);
+               ping = true;
+       }
+       else if (info->asic_type == BM1370)
+       {
+               unsigned char pingbuf[sizeof(BITAXE_BM1370_FREQ_PING)];
+               memcpy(pingbuf, BITAXE_BM1370_FREQ_PING, sizeof(pingbuf));
+               compac_send2(compac, pingbuf, sizeof(pingbuf), 8 * sizeof(pingbuf) - 8, "pingfreq");
+               ping = true;
+       }
 
 	if (ping)
 	{
@@ -1409,9 +1421,9 @@ static void compac_set_frequency(struct cgpu_info *compac, float frequency)
 	uint32_t i, r, r1, r2, r3, p1, p2, pll;
 	struct timeval now;
 
-	if (info->asic_type == BM1397) {
-		calc_gsf_freq(compac, frequency, -1);
-	} else if (info->asic_type == BM1387) {
+       if (info->asic_type == BM1397) {
+               calc_gsf_freq(compac, frequency, -1);
+       } else if (info->asic_type == BM1387) {
 		unsigned char buffer[] = {0x58, 0x09, 0x00, 0x0C, 0x00, 0x50, 0x02, 0x41, 0x00};   //250MHz -- osc of 25MHz
 		frequency = bound(frequency, 50, 1200);
 		frequency = FREQ_BASE(frequency);
@@ -1438,7 +1450,7 @@ static void compac_set_frequency(struct cgpu_info *compac, float frequency)
 		info->frequency = frequency;
 		for (i = 0; i < info->chips; i++)
 			info->asics[i].frequency = frequency;
-	} else if (info->asic_type == BM1384) {
+       } else if (info->asic_type == BM1384) {
 		unsigned char buffer[] = {0x82, 0x0b, 0x83, 0x00};
 
 		frequency = bound(frequency, 6, 500);
@@ -1477,8 +1489,56 @@ static void compac_set_frequency(struct cgpu_info *compac, float frequency)
 
 		for (i = 0; i < info->chips; i++)
 			info->asics[i].frequency = frequency;
-	}
-	compac_update_rates(compac);
+       } else if (info->asic_type == BM1370) {
+               unsigned char freqbuf[sizeof(BITAXE_BM1370_PLL_WRITE)];
+               memcpy(freqbuf, BITAXE_BM1370_PLL_WRITE, sizeof(freqbuf));
+               float target = limit_freq(info, frequency, false);
+               float min_diff = 10.0f, diff, calc = 200.0f;
+               uint8_t fb=0, pd1=0, pd2=0, refd=0;
+               for (uint8_t r=2; r>0 && fb==0; r--) {
+                       for (uint8_t d1=7; d1>0 && fb==0; d1--) {
+                               for (uint8_t d2=7; d2>0 && fb==0; d2--) {
+                                       if (d1 >= d2) {
+                                               int tmp = lrint(((float)d1 * d2 * target * r) / BM1370_REF_FREQ);
+                                               if (tmp >= 0xa0 && tmp <= 0xef) {
+                                                       calc = BM1370_REF_FREQ * tmp / ((float)r * d1 * d2);
+                                                       diff = fabs(target - calc);
+                                                       if (diff < min_diff) {
+                                                               fb = tmp;
+                                                               pd1 = d1;
+                                                               pd2 = d2;
+                                                               refd = r;
+                                                               min_diff = diff;
+                                                       }
+                                               }
+                                       }
+                               }
+                       }
+               }
+               if (fb == 0) {
+                       fb = BM1370_FB_DEFAULT;
+                       refd = BM1370_REFD_DEFAULT;
+                       pd1 = BM1370_PD1_DEFAULT;
+                       pd2 = BM1370_PD2_DEFAULT;
+                       calc = BM1370_REF_FREQ * fb / (refd * pd1 * pd2);
+               }
+
+               freqbuf[5] = fb;
+               freqbuf[6] = refd;
+               freqbuf[7] = (((pd1 - 1) & 0xf) << 4) | ((pd2 - 1) & 0xf);
+               if ((float)fb * BM1370_REF_FREQ / refd >= 2400.0)
+                       freqbuf[4] = 0x50;
+
+               applog(LOG_INFO, "%d: %s %d - setting frequency to %.2fMHz (%.2f)",
+                       compac->cgminer_id, compac->drv->name, compac->device_id, frequency, calc);
+
+               compac_send2(compac, freqbuf, sizeof(freqbuf), 8 * sizeof(freqbuf) - 8, "freq");
+
+               info->frequency = calc;
+               for (i = 0; i < info->chips; i++)
+                       info->asics[i].frequency = calc;
+       }
+       compac_update_rates(compac);
 
 	// wipe info->gh/asic->gc
 	cgtime(&now);
@@ -1574,11 +1634,15 @@ static void compac_gsf_nonce(struct cgpu_info *compac, K_ITEM *item)
 	bool boost, ok;
 	int asic_id, i;
 
-	if (info->asic_type != BM1397)
-		return;
+        if (info->asic_type != BM1397 && info->asic_type != BM1370)
+                return;
 
-	job_id = rx[7] & 0xff;
-	nonce = (rx[5] << 0) | (rx[4] << 8) | (rx[3] << 16) | (rx[2] << 24);
+        if (info->asic_type == BM1370) {
+                job_id = (rx[7] & 0xf0) >> 1;
+        } else {
+                job_id = rx[7] & 0xff;
+        }
+        nonce = (rx[5] << 0) | (rx[4] << 8) | (rx[3] << 16) | (rx[2] << 24);
 
 	// N.B. busy work (0xff) never returns a nonce
 
@@ -1873,16 +1937,16 @@ static uint64_t compac_check_nonce(struct cgpu_info *compac)
 	struct timeval now;
 	int i;
 
-	if (info->asic_type == BM1387) {
-		job_id = info->rx[5] & 0xff;
-		nonce = (info->rx[3] << 0) | (info->rx[2] << 8) | (info->rx[1] << 16) | (info->rx[0] << 24);
-	} else if (info->asic_type == BM1384) {
-		job_id = info->rx[4] ^ 0x80;
-		nonce = (info->rx[3] << 0) | (info->rx[2] << 8) | (info->rx[1] << 16) | (info->rx[0] << 24);
-	} else if (info->asic_type == BM1397) {
-		// should never call here
-		return hashes;
-	}
+       if (info->asic_type == BM1387) {
+               job_id = info->rx[5] & 0xff;
+               nonce = (info->rx[3] << 0) | (info->rx[2] << 8) | (info->rx[1] << 16) | (info->rx[0] << 24);
+       } else if (info->asic_type == BM1384) {
+               job_id = info->rx[4] ^ 0x80;
+               nonce = (info->rx[3] << 0) | (info->rx[2] << 8) | (info->rx[1] << 16) | (info->rx[0] << 24);
+       } else if (info->asic_type == BM1397) {
+               // should never call here
+               return hashes;
+       }
 
 	if ((info->rx[0] == 0x72 && info->rx[1] == 0x03 && info->rx[2] == 0xEA && info->rx[3] == 0x83)
 	||  (info->rx[0] == 0xE1 && info->rx[1] == 0x6B && info->rx[2] == 0xF8 && info->rx[3] == 0x09))
@@ -1910,8 +1974,9 @@ static uint64_t compac_check_nonce(struct cgpu_info *compac)
 	info->nonces++;
 	info->nonceless = 0;
 
-	int asic_id = (int)floor((double)(info->rx[0]) / ((double)0x100 / (double)(info->chips)));
-	struct ASIC_INFO *asic = &info->asics[asic_id];
+       int asic_id;
+       asic_id = (int)floor((double)(info->rx[0]) / ((double)0x100 / (double)(info->chips)));
+       struct ASIC_INFO *asic = &info->asics[asic_id];
 
 	if (nonce == asic->prev_nonce) {
 		applog(LOG_INFO, "%d: %s %d - Duplicate Nonce : %08x @ %02x [%02x %02x %02x %02x %02x %02x]",
@@ -2013,23 +2078,30 @@ static void busy_work(struct COMPAC_INFO *info)
 {
 	memset(info->task, 0, info->task_len);
 
-	if (info->asic_type == BM1387 || info->asic_type == BM1397) {
-		info->task[0] = 0x21;
-		info->task[1] = info->task_len;
-		info->task[2] = info->job_id & 0xff;
-		info->task[3] = ((!opt_gekko_noboost && info->vmask) ? 0x04 : 0x01);
-		memset(info->task + 8, 0xff, 12);
+       if (info->asic_type == BM1387 || info->asic_type == BM1397) {
+               info->task[0] = 0x21;
+               info->task[1] = info->task_len;
+               info->task[2] = info->job_id & 0xff;
+               info->task[3] = ((!opt_gekko_noboost && info->vmask) ? 0x04 : 0x01);
+               memset(info->task + 8, 0xff, 12);
 
 		unsigned short crc = crc16_false(info->task, info->task_len - 2);
 		info->task[info->task_len - 2] = (crc >> 8) & 0xff;
 		info->task[info->task_len - 1] = crc & 0xff;
-	} else if (info->asic_type == BM1384) {
-		if (info->mining_state == MINER_MINING) {
-			info->task[39] = info->ticket_mask & 0xff;
-			stuff_msb(info->task + 40, info->task_hcn);
-		}
-		info->task[51] = info->job_id & 0xff;
-	}
+       } else if (info->asic_type == BM1384) {
+               if (info->mining_state == MINER_MINING) {
+                       info->task[39] = info->ticket_mask & 0xff;
+                       stuff_msb(info->task + 40, info->task_hcn);
+               }
+               info->task[51] = info->job_id & 0xff;
+       } else if (info->asic_type == BM1370) {
+               info->task[0] = info->job_id & 0xff;
+               info->task[1] = 0x01;
+               memset(info->task + 2, 0, info->task_len - 4);
+               unsigned short crc = crc16_false(info->task, info->task_len - 2);
+               info->task[info->task_len - 2] = (crc >> 8) & 0xff;
+               info->task[info->task_len - 1] = crc & 0xff;
+       }
 }
 
 static void init_task(struct COMPAC_INFO *info)
@@ -2061,15 +2133,29 @@ static void init_task(struct COMPAC_INFO *info)
 		unsigned short crc = crc16_false(info->task, info->task_len - 2);
 		info->task[info->task_len - 2] = (crc >> 8) & 0xff;
 		info->task[info->task_len - 1] = crc & 0xff;
-	} else if (info->asic_type == BM1384) {
-		if (info->mining_state == MINER_MINING) {
-			stuff_reverse(info->task, work->midstate, 32);
-			stuff_reverse(info->task + 52, work->data + 64, 12);
-			info->task[39] = info->ticket_mask & 0xff;
-			stuff_msb(info->task + 40, info->task_hcn);
-		}
-		info->task[51] = info->job_id & 0xff;
-	}
+       } else if (info->asic_type == BM1384) {
+               if (info->mining_state == MINER_MINING) {
+                       stuff_reverse(info->task, work->midstate, 32);
+                       stuff_reverse(info->task + 52, work->data + 64, 12);
+                       info->task[39] = info->ticket_mask & 0xff;
+                       stuff_msb(info->task + 40, info->task_hcn);
+               }
+               info->task[51] = info->job_id & 0xff;
+       } else if (info->asic_type == BM1370) {
+               info->task[0] = info->job_id & 0xff;
+               info->task[1] = 0x01;
+               if (info->mining_state == MINER_MINING) {
+                       stuff_reverse(info->task + 2, work->data + 76, 4);  /* starting_nonce */
+                       stuff_reverse(info->task + 6, work->data + 72, 4);  /* nbits */
+                       stuff_reverse(info->task + 10, work->data + 68, 4); /* ntime */
+                       stuff_reverse(info->task + 14, work->data + 36, 32); /* merkle */
+                       stuff_reverse(info->task + 46, work->data + 4, 32);  /* prevhash */
+                       stuff_reverse(info->task + 78, work->data, 4);       /* version */
+               }
+               unsigned short crc = crc16_false(info->task, info->task_len - 2);
+               info->task[info->task_len - 2] = (crc >> 8) & 0xff;
+               info->task[info->task_len - 1] = crc & 0xff;
+       }
 }
 
 static void change_freq_any(struct cgpu_info *compac, float new_freq)
@@ -3082,8 +3168,9 @@ applog(LOG_ERR, " %s %d dump before %d=0xaa [%02x %02x %02x %02x ...]",
 			 case MINER_CHIP_COUNT_XX:
 				// BM1397
 				chipped = false;
-				if (rx[2] == 0x13 && rx[3] == 0x97)
-				{
+                               if ((rx[2] == 0x13 && rx[3] == 0x97) ||
+                                   (rx[2] == 0x13 && rx[3] == 0x70))
+                               {
 					struct ASIC_INFO *asic = &info->asics[info->chips];
 					memset(asic, 0, sizeof(struct ASIC_INFO));
 					asic->frequency = info->frequency_default;
@@ -3207,8 +3294,8 @@ static void *compac_listen(void *object)
 	struct cgpu_info *compac = (struct cgpu_info *)object;
 	struct COMPAC_INFO *info = compac->device_data;
 
-	if (info->asic_type == BM1397)
-		return compac_listen2(compac, info);
+        if (info->asic_type == BM1397 || info->asic_type == BM1370)
+                return compac_listen2(compac, info);
 
 	struct timeval now;
 	unsigned char rx[BUFFER_MAX];
@@ -3886,20 +3973,30 @@ static struct cgpu_info *compac_detect_one(struct libusb_device *dev, struct usb
 			info->can_boost = true;
 			compac_toggle_reset(compac);
 			break;
-		case BM1397:
-			info->rx_len = 9;
-			info->task_len = 54;
-			info->cores = 672;
-			info->add_job_id = 4;
-			info->max_job_id = 0x7f;
-			// ignore lowboost
-			info->midstates = 4;
-			info->can_boost = true;
-			compac_toggle_reset(compac);
-			break;
-		default:
-			break;
-	}
+               case BM1397:
+                       info->rx_len = 9;
+                       info->task_len = 54;
+                       info->cores = 672;
+                       info->add_job_id = 4;
+                       info->max_job_id = 0x7f;
+                       // ignore lowboost
+                       info->midstates = 4;
+                       info->can_boost = true;
+                       compac_toggle_reset(compac);
+                       break;
+               case BM1370:
+                       info->rx_len = 11;
+                       info->task_len = 84;
+                       info->cores = 2040;
+                       info->add_job_id = 24;
+                       info->max_job_id = 0x7f;
+                       info->midstates = 1;
+                       info->can_boost = true;
+                       compac_toggle_reset(compac);
+                       break;
+               default:
+                       break;
+       }
 
 	info->interface = usb_interface(compac);
 	info->mining_state = MINER_INIT;
