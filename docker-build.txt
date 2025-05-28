@@ -1,0 +1,23 @@
+Building cgminer using Docker
+-----------------------------
+
+This document describes how to compile cgminer-asic inside a Docker container.
+
+1. Install Docker on your system.
+2. From the repository root build the Docker image:
+
+        docker build -t cgminer-asic .
+
+   This produces an image with all required build dependencies and a compiled
+   copy of cgminer.
+3. Run a container from the image:
+
+        docker run --rm -it cgminer-asic
+
+   The source tree is located under /workspace inside the container and
+   cgminer is compiled during the image build. If you want to rebuild the
+   binary, run the following commands inside the container:
+
+        ./autogen.sh
+        ./configure --enable-bitaxe
+        make -j"$(nproc)"
