@@ -10,6 +10,14 @@ RUN apt-get update && \
 WORKDIR /workspace
 COPY . /workspace
 
-RUN ./autogen.sh && ./configure --enable-bitaxe && make -j"$(nproc)"
+# bash + pipefail を常時有効にして CFLAGS に -fcommon を追加
+SHELL ["/bin/bash", "-o", "pipefail", "-c"]
+
+ENV CFLAGS="-O2 -fcommon"
+
+RUN ./autogen.sh && \
+    ./configure --enable-bitaxe CFLAGS="$CFLAGS" && \
+    make -j"$(nproc)" 2>&1 | tee /tmp/build.log
 
 CMD ["bash"]
+

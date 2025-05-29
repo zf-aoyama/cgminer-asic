@@ -64,3 +64,5 @@ lib/warn-on-use.h
 mkinstalldirs
 
 *.swp
+
+build.log
