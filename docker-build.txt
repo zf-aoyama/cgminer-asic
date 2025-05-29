@@ -21,3 +21,11 @@ This document describes how to compile cgminer-asic inside a Docker container.
         ./autogen.sh
         ./configure --enable-bitaxe
         make -j"$(nproc)"
+
+   To capture detailed build logs, you can run the provided helper script
+   instead:
+
+        ./build-with-logs.sh
+
+   This stores the combined stdout and stderr output in `build.log` so you
+   can inspect any errors after the build finishes.
