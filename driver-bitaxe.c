@@ -291,8 +291,9 @@ static float limit_freq(struct COMPAC_INFO *info, float freq, bool zero)
 	 case IDENT_GSI:
 		freq = fbound(freq, 50, 900);
 		break;
-	 case IDENT_GSF:
-	 case IDENT_GSFM:
+         case IDENT_GSF:
+         case IDENT_GSFM:
+         case IDENT_AXE:
 		// allow 0 also if zero is true - coded obviously
 		if (zero && freq == 0)
 			freq = 0;
@@ -3588,24 +3589,25 @@ static bool compac_init(struct thr_info *thr)
 		// due to higher freq allow longer
 		info->ramp_time = MS_MINUTE_4;
 		break;
-	 case IDENT_GSF:
-	 case IDENT_GSFM:
-		if (info->ident == IDENT_GSF)
-			info->frequency_requested = limit_freq(info, opt_gekko_gsf_freq, false);
-		else
-			info->frequency_requested = limit_freq(info, opt_gekko_r909_freq, false);
+         case IDENT_GSF:
+         case IDENT_GSFM:
+         case IDENT_AXE:
+                if (info->ident == IDENT_GSF || info->ident == IDENT_AXE)
+                        info->frequency_requested = limit_freq(info, opt_gekko_gsf_freq, false);
+                else
+                        info->frequency_requested = limit_freq(info, opt_gekko_r909_freq, false);
 
 		info->frequency_start = limit_freq(info, opt_gekko_start_freq, false);
 		if (info->frequency_start < 100)
 			info->frequency_start = 100;
-		if (info->frequency_start == 100)
-		{
-			if (info->ident == IDENT_GSF)
+                if (info->frequency_start == 100)
+                {
+                        if (info->ident == IDENT_GSF || info->ident == IDENT_AXE)
 			{
 				// default to 200
 				info->frequency_start = 200;
 			}
-			else // (info->ident == IDENT_GSFM)
+                        else // (info->ident == IDENT_GSFM)
 			{
 				// default to 400
 				info->frequency_start = 400;
@@ -3621,7 +3623,7 @@ static bool compac_init(struct thr_info *thr)
 			step_freq = 5.0;
 		info->step_freq = FREQ_BASE(step_freq);
 		// IDENT_GSFM runs at the more reliable higher frequencies
-		if (info->ident == IDENT_GSF)
+                if (info->ident == IDENT_GSF || info->ident == IDENT_AXE)
 		{
 			// chips can get lower than the calculated 67.2 at lower freq
 			info->hr_scale = 52.5 / 67.2;
@@ -3652,7 +3654,7 @@ static bool compac_init(struct thr_info *thr)
 		pthread_mutex_init(&info->ghlock, NULL);
 		pthread_mutex_init(&info->joblock, NULL);
 
-		if (info->ident == IDENT_GSF || info->ident == IDENT_GSFM)
+                if (info->ident == IDENT_GSF || info->ident == IDENT_GSFM || info->ident == IDENT_AXE)
 		{
 			info->nlist = k_new_list("GekkoNonces", sizeof(struct COMPAC_NONCE),
 						ALLOC_NLIST_ITEMS, LIMIT_NLIST_ITEMS, true);
@@ -3678,7 +3680,7 @@ static bool compac_init(struct thr_info *thr)
 
 		pthread_detach(info->wthr.pth);
 
-		if (info->ident == IDENT_GSF || info->ident == IDENT_GSFM)
+                if (info->ident == IDENT_GSF || info->ident == IDENT_GSFM || info->ident == IDENT_AXE)
 		{
 			gekko_usleep(info, MS2US(10));
 
@@ -3895,8 +3897,9 @@ static struct cgpu_info *compac_detect_one(struct libusb_device *dev, struct usb
 		exclude_me |= (info->ident == IDENT_GSE && !opt_gekko_gse_detect);
 		exclude_me |= (info->ident == IDENT_GSH && !opt_gekko_gsh_detect);
 		exclude_me |= (info->ident == IDENT_GSI && !opt_gekko_gsi_detect);
-		exclude_me |= (info->ident == IDENT_GSF && !opt_gekko_gsf_detect);
-		exclude_me |= (info->ident == IDENT_GSFM && !opt_gekko_r909_detect);
+                exclude_me |= (info->ident == IDENT_GSF && !opt_gekko_gsf_detect);
+                exclude_me |= (info->ident == IDENT_AXE && !opt_gekko_gsf_detect);
+                exclude_me |= (info->ident == IDENT_GSFM && !opt_gekko_r909_detect);
 	}
 
 	if (opt_gekko_serial != NULL
@@ -3940,12 +3943,16 @@ static struct cgpu_info *compac_detect_one(struct libusb_device *dev, struct usb
 			info->asic_type = BM1387;
 			info->expected_chips = 12;
 			break;
-		case IDENT_GSF:
-		case IDENT_GSFM:
-			info->asic_type = BM1397;
-			// at least 1
-			info->expected_chips = 1;
-			break;
+                case IDENT_GSF:
+                case IDENT_GSFM:
+                        info->asic_type = BM1397;
+                        // at least 1
+                        info->expected_chips = 1;
+                        break;
+                case IDENT_AXE:
+                        info->asic_type = BM1370;
+                        info->expected_chips = 1;
+                        break;
 		default:
 			quit(1, "%d: %s compac_detect_one() invalid %s ident=%d",
 				compac->cgminer_id, compac->drv->dname, compac->drv->dname, info->ident);
