@@ -1134,10 +1134,10 @@ static struct usb_find_devices find_dev[] = {
 		INTINFO(gek2_ints) },
 #endif
 #ifdef USE_BITAXE
-	{
-		.drv = DRIVER_bitaxe,
-		.name = "AXE",
-		.ident = IDENT_GSF,
+        {
+                .drv = DRIVER_bitaxe,
+                .name = "AXE",
+                .ident = IDENT_GSF,
 		.idVendor = 0x0403,
 		.idProduct = 0x6015, //jim.sh
 		.iManufacturer = "FTDI",
@@ -1145,12 +1145,24 @@ static struct usb_find_devices find_dev[] = {
 		.config = 1,
 		.timeout = COMPAC_TIMEOUT_MS,
 		.latency = LATENCY_UNUSED,
-		INTINFO(gek2_ints) },
-	{
-		.drv = DRIVER_bitaxe,
-		.name = "AXE",
-		.ident = IDENT_GSF,
-		.idVendor = 0x0403,
+                INTINFO(gek2_ints) },
+        {
+                .drv = DRIVER_bitaxe,
+                .name = "AXE",
+                .ident = IDENT_AXE,
+                .idVendor = 0x303a,
+                .idProduct = 0x1001,
+                .iManufacturer = "Espressif",
+                .iProduct = "USB JTAG/serial debug unit",
+                .config = 1,
+                .timeout = COMPAC_TIMEOUT_MS,
+                .latency = LATENCY_UNUSED,
+                INTINFO(gek2_ints) },
+        {
+                .drv = DRIVER_bitaxe,
+                .name = "AXE",
+                .ident = IDENT_GSF,
+                .idVendor = 0x0403,
 		.idProduct = 0x6001, //FT232R
 		.iManufacturer = "FTDI",
 		.iProduct = "FT232R USB UART", //FT232R

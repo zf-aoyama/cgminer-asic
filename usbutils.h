@@ -206,8 +206,9 @@ enum sub_ident {
 	IDENT_LIN,
 	IDENT_LLT,
 	IDENT_MMQ,
-	IDENT_NFU,
-	IDENT_OSM
+        IDENT_NFU,
+        IDENT_OSM,
+        IDENT_AXE
 };
 
 struct usb_find_devices {
